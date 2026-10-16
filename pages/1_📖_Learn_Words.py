@@ -22,30 +22,20 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
-def get_api_key() -> str | None:
-    return st.session_state.get("api_key") or st.secrets.get("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+def get_api_key() -> str:
+    """Prioritizes Streamlit Cloud Secrets over stale session state inputs."""
+    key = ""
+    if "GEMINI_API_KEY" in st.secrets:
+        key = str(st.secrets["GEMINI_API_KEY"])
+    elif "gemini_api_key" in st.secrets:
+        key = str(st.secrets["gemini_api_key"])
+    elif st.session_state.get("api_key"):
+        key = str(st.session_state.get("api_key"))
+    
+    return key.strip().strip("'").strip('"')
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
-def get_available_models(api_key: str) -> list[str]:
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        resp = requests.get(url, timeout=4)
-        if resp.status_code == 200:
-            models_data = resp.json().get("models", [])
-            valid = [
-                m.get("name", "").replace("models/", "") 
-                for m in models_data 
-                if "generateContent" in m.get("supportedGenerationMethods", []) and "flash" in m.get("name", "").lower()
-            ]
-            if valid:
-                return valid
-    except Exception:
-        pass
-    return ["gemini-1.5-flash", "gemini-1.5-flash-8b"]
-
-
-def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[str, Any]], str | None]:
+def get_analysis(words: list[str], api_key: str) -> tuple[dict[str, dict[str, Any]], str | None]:
     if not api_key:
         return {}, "No API key configured."
     
@@ -54,23 +44,35 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
 For each item, provide:
 1. language: 'English' or 'Chinese'
 2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
-3. meaning: simple, fun, child-friendly definition.
+3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
 4. sentence: short, relatable daily life context sentence.
 5. spelling_tip: a super fun, child-friendly memory trick or phonics hint! 
-   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth)...").
+   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth) because...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
    - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
 6. pinyin: Chinese tone-marked pinyin or empty for English.
 
 Items: """ + json.dumps(words, ensure_ascii=False)
     
-    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}}
-    models_to_try = get_available_models(api_key)
-    last_err = None
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}], 
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
+    }
 
-    for model in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    # Try stable endpoints in sequence
+    urls_to_try = [
+        "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    ]
+
+    last_err = None
+    for url in urls_to_try:
         try:
-            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+            resp = requests.post(url, json=payload, headers=headers, timeout=12)
             if resp.status_code == 200:
                 data = json.loads(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
                 return (data if isinstance(data, dict) else {}), None
@@ -117,17 +119,20 @@ def render_hanzi_animations(word: str) -> None:
 
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
-    api_key_input = st.text_input("Google Gemini API Key", type="password", value=st.session_state.get("api_key", ""))
+    api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value="")
     if api_key_input:
         st.session_state.api_key = api_key_input.strip()
 
 st.title("📖 Step 2: Let's Learn Our Words!")
 
+# Week Switcher Bar
 if "archived_lists" in st.session_state and st.session_state.archived_lists:
+    options_list = list(st.session_state.archived_lists.keys())
+    curr_index = options_list.index(st.session_state.get("active_week", options_list[0])) if st.session_state.get("active_week") in options_list else 0
     selected_week = st.selectbox(
         "📚 Active Practice List:",
-        options=list(st.session_state.archived_lists.keys()),
-        index=list(st.session_state.archived_lists.keys()).index(st.session_state.get("active_week", list(st.session_state.archived_lists.keys())[0]))
+        options=options_list,
+        index=curr_index
     )
     if selected_week != st.session_state.get("active_week"):
         st.session_state.active_week = selected_week
@@ -137,7 +142,7 @@ if "archived_lists" in st.session_state and st.session_state.archived_lists:
 
 raw_words = st.session_state.get("raw_words", "")
 if not raw_words:
-    st.info("👆 Please go to the Home page to select or add your spelling list first!")
+    st.info("👆 Please go to the Home page to add or select your spelling list first!")
     st.stop()
 
 words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
@@ -158,7 +163,7 @@ if key and not st.session_state.cached_analysis and words:
 analysis = st.session_state.cached_analysis
 
 if not key:
-    st.warning("⚠️ No Gemini API Key configured. Add your API Key in the sidebar or Secrets to generate definitions and memory tricks!")
+    st.warning("⚠️ No Gemini API Key configured in Secrets.")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
