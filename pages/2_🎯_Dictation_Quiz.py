@@ -75,9 +75,9 @@ def render_hanzi_animations(word: str) -> None:
         targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff;"></div>'
         scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 100, height: 100, padding: 5, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
 
-    num_rows = (len(chinese_chars) + 4) // 5
-    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">{targets}</div><script>{scripts}</script></body></html>"""
-    components.html(html_code, height=num_rows * 120 + 20)
+    num_rows = (len(chinese_chars) + 2) // 3
+    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;">{targets}</div><script>{scripts}</script></body></html>"""
+    components.html(html_code, height=num_rows * 115 + 15)
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -229,45 +229,55 @@ is_chinese = bool(re.search(r'[\u4e00-\u9fff]', target_word))
 st.progress((current_idx) / total_q)
 st.caption(f"Question {current_idx + 1} of {total_q} — **{selected_list_title}**")
 
-st.write("### 🔊 Listen and write down the word:")
-if st.button("🔊 Play Word Sound", type="secondary"):
-    speak_text(target_word)
+st.write("### 🔊 Listen to the Word:")
+audio_col1, audio_col2 = st.columns([1, 2])
+with audio_col1:
+    if st.button("🔊 Play Sound", type="primary", use_container_width=True):
+        speak_text(target_word)
 
 st.write("---")
 
-st.subheader("✏️ Handwriting Practice Pad")
-st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
-
-canvas_result = st_canvas(
-    fill_color="rgba(255, 255, 255, 0)",
-    stroke_width=6,
-    stroke_color="#000000",
-    background_color="#ffffff",
-    height=260,
-    width=340,
-    drawing_mode="freedraw",
-    update_streamlit=True,
-    return_image_data=True,
-    key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
-)
-
-# Reveal Target Answer & Reference Animation button
-if not st.session_state[f"quiz_checked_{active_child}"]:
-    if st.button("🔍 Reveal Answer & Check Writing", type="primary", use_container_width=True):
-        st.session_state[f"quiz_checked_{active_child}"] = True
-        st.rerun()
-
-# Self-Evaluation Block
+# Main Practice Layout
 if st.session_state[f"quiz_checked_{active_child}"]:
-    st.markdown(f"### 🔍 Reference Answer: **{target_word}**")
-    
-    if is_chinese:
-        st.caption("Compare your handwriting with the stroke order animation below:")
-        render_hanzi_animations(target_word)
-    
+    col_pad, col_ref = st.columns([1, 1], gap="medium")
+else:
+    col_pad, col_ref = st.columns([1, 0.01])
+
+with col_pad:
+    st.markdown("### ✏️ Your Writing")
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 255, 255, 0)",
+        stroke_width=6,
+        stroke_color="#000000",
+        background_color="#ffffff",
+        height=280,
+        width=280,
+        drawing_mode="freedraw",
+        update_streamlit=True,
+        return_image_data=True,
+        key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
+    )
+
+with col_ref:
+    if st.session_state[f"quiz_checked_{active_child}"]:
+        st.markdown(f"### 🔍 Correct Answer: **{target_word}**")
+        if is_chinese:
+            render_hanzi_animations(target_word)
+        else:
+            st.info(f"Target Word: **{target_word}**")
+
+st.write("---")
+
+# Bottom Controls & Evaluation
+if not st.session_state[f"quiz_checked_{active_child}"]:
+    btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+    with btn_col2:
+        if st.button("🔍 Check Answer & Stroke Order", type="primary", use_container_width=True):
+            st.session_state[f"quiz_checked_{active_child}"] = True
+            st.rerun()
+else:
     if st.session_state[f"quiz_result_{active_child}"] is None:
-        st.write("---")
-        st.write("### 📝 How did you do?")
+        st.markdown("<h4 style='text-align: center;'>📝 How did your writing look?</h4>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         
         with c1:
@@ -289,9 +299,10 @@ if st.session_state[f"quiz_checked_{active_child}"]:
         else:
             st.warning(f"💡 Marked for practice! Keep it up, {active_child}!")
 
-        st.write("")
-        if st.button("➡️ Next Word", type="primary", use_container_width=True):
-            st.session_state[f"quiz_index_{active_child}"] += 1
-            st.session_state[f"quiz_checked_{active_child}"] = False
-            st.session_state[f"quiz_result_{active_child}"] = None
-            st.rerun()
+        btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+        with btn_col2:
+            if st.button("➡️ Next Word", type="primary", use_container_width=True):
+                st.session_state[f"quiz_index_{active_child}"] += 1
+                st.session_state[f"quiz_checked_{active_child}"] = False
+                st.session_state[f"quiz_result_{active_child}"] = None
+                st.rerun()
