@@ -170,7 +170,7 @@ st.caption("Write your answer using your finger, stylus, or mouse in the box bel
 canvas_result = st_canvas(
     fill_color="rgba(255, 255, 255, 0)",
     stroke_width=5,
-    stroke_color="#0f172a",
+    stroke_color="#000000",
     background_color="#ffffff",
     height=260,
     width=340,
@@ -178,7 +178,7 @@ canvas_result = st_canvas(
     key=f"canvas_{current_idx}"
 )
 
-# Render text input ONLY for English spelling words
+# Render text input ONLY for English spelling lists
 if not is_chinese:
     user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{current_idx}")
 
@@ -187,18 +187,17 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Handwriting", type="primary"):
         if is_chinese:
-            # Safely extract image matrix without throwing RuntimeError
+            img_data = getattr(canvas_result, "image_data", None)
+            
+            # Robust stroke verification check across channels
             has_strokes = False
-            img_data = None
-            try:
-                if canvas_result is not None and getattr(canvas_result, "image_data", None) is not None:
-                    img_data = canvas_result.image_data
-                    if np.any(img_data[:, :, :3] < 255):  # Check if drawn pixels exist
-                        has_strokes = True
-            except Exception:
-                has_strokes = False
+            if img_data is not None and isinstance(img_data, np.ndarray) and img_data.size > 0:
+                # Check for drawn stroke presence via alpha channel or RGB variance
+                has_alpha_strokes = np.any(img_data[:, :, 3] > 0)
+                has_rgb_strokes = np.any(img_data[:, :, :3] < 200)
+                has_strokes = has_alpha_strokes or has_rgb_strokes
 
-            if not has_strokes:
+            if not has_strokes and img_data is None:
                 st.warning("✏️ Please write the character on the practice pad before grading!")
             elif GEMINI_API_KEY and img_data is not None:
                 with st.spinner("Analyzing Chinese handwriting..."):
