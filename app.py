@@ -7,6 +7,7 @@ from typing import Any
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from gtts import gTTS
 from pypinyin import Style, pinyin
 
@@ -122,8 +123,50 @@ def audio_button(text: str, language: str, key: str) -> None:
         st.info(f"Audio could not be loaded right now. Please check your internet connection. ({type(exc).__name__})")
 
 
+def render_hanzi_animations(word: str) -> None:
+    """Renders interactive Hanzi Writer stroke animations for Chinese characters."""
+    chinese_chars = [char for char in word if re.search(r"[\u3400-\u9fff]", char)]
+    if not chinese_chars:
+        return
+
+    targets = ""
+    scripts = ""
+    
+    for i, char in enumerate(chinese_chars):
+        div_id = f"target-{i}-{ord(char)}"
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 5px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fafafa;"></div>'
+        scripts += f"""
+        HanziWriter.create('{div_id}', '{char}', {{
+            width: 110,
+            height: 110,
+            padding: 5,
+            showOutline: true,
+            strokeAnimationSpeed: 1,
+            delayBetweenStrokes: 150
+        }}).loopCharacterAnimation();
+        """
+
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+    </head>
+    <body style="margin: 0; padding: 0; background: transparent;">
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        {targets}
+      </div>
+      <script>
+        {scripts}
+      </script>
+    </body>
+    </html>
+    """
+    components.html(html_code, height=130)
+
+
 def format_strokes(strokes_val: Any) -> str:
-    """Safely convert strokes output to formatted string regardless of data structure."""
+    """Safely convert strokes output to formatted string."""
     if not strokes_val:
         return "—"
     if isinstance(strokes_val, list):
@@ -141,6 +184,7 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
     language = str(info.get("language") or guess_language(word))
     st.markdown(f'<div class="word-card"><h3 style="margin:0">{word}</h3></div>', unsafe_allow_html=True)
     audio_button(word, language, f"audio-{word}")
+    
     if language == "English":
         cols = st.columns(2)
         cols[0].markdown(f"**Syllables:** {info.get('syllables', '—')}")
@@ -153,6 +197,10 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
         if py:
             st.caption("Listen to the Chinese word and its pronunciation:")
             audio_button(py, "Chinese", f"pinyin-{word}")
+            
+        st.markdown("**笔顺动画 Visual Stroke Order:**")
+        render_hanzi_animations(word)
+
         st.markdown(f"**意思 Meaning:** {info.get('meaning', '—')}")
         st.markdown(f"**例句 Example:** {info.get('sentence', '—')}")
         st.markdown(f"**总笔画 Stroke count:** {info.get('stroke_count') or 'Please verify with your class dictionary'}")
@@ -161,10 +209,10 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
         
         strokes = info.get("strokes")
         if strokes:
-            st.markdown(f"**笔顺 Stroke order:** {format_strokes(strokes)}")
+            st.markdown(f"**笔顺名称 Stroke names:** {format_strokes(strokes)}")
             
         st.markdown(f"**记忆小贴士 Tip:** {info.get('spelling_tip', '—')}")
-        st.caption("Stroke details are AI-generated study hints; check your textbook or teacher for the required stroke order.")
+        st.caption("Stroke details are AI-generated study hints; check your textbook or teacher for required stroke order.")
 
 
 if "raw_words" not in st.session_state:
