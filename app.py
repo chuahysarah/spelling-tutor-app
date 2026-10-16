@@ -14,7 +14,7 @@ from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
-# Playful, child-friendly custom styling
+# Child-friendly custom styling
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -58,6 +58,24 @@ html, body, [class*="css"] {
     background: #ffffff; 
     margin: .6rem 0;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
+}
+
+.badge-mastered {
+    background-color: #dcfce7;
+    color: #15803d;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.badge-review {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
 .stButton>button {
@@ -260,7 +278,6 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
 
         st.markdown(f"💡 **意思 Meaning:** {info.get('meaning', '—')}")
         
-        # Example Sentence with dedicated audio playback button
         sentence = info.get("sentence", "—")
         st.markdown(f"💬 **例句 Example:** {sentence}")
         if sentence and sentence != "—":
@@ -278,8 +295,11 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
         st.markdown(f"⭐ **记忆小贴士 Tip:** {info.get('spelling_tip', '—')}")
 
 
+# Session State Initialization
 if "raw_words" not in st.session_state:
     st.session_state.raw_words = ""
+if "quiz_words" not in st.session_state:
+    st.session_state.quiz_words = []
 if "quiz_index" not in st.session_state:
     st.session_state.quiz_index = 0
 if "quiz_score" not in st.session_state:
@@ -288,6 +308,10 @@ if "quiz_checked" not in st.session_state:
     st.session_state.quiz_checked = False
 if "quiz_answer" not in st.session_state:
     st.session_state.quiz_answer = ""
+if "unfamiliar_words" not in st.session_state:
+    st.session_state.unfamiliar_words = set()
+if "mastered_words" not in st.session_state:
+    st.session_state.mastered_words = set()
 
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
@@ -304,15 +328,21 @@ with st.form("word_list_form"):
 
 if submitted:
     st.session_state.raw_words = raw
+    st.session_state.quiz_words = normalize_words(raw)
     st.session_state.quiz_index = 0
     st.session_state.quiz_score = 0
     st.session_state.quiz_checked = False
     st.session_state.quiz_answer = ""
+    st.session_state.unfamiliar_words = set()
+    st.session_state.mastered_words = set()
 
 words = normalize_words(st.session_state.raw_words)
 if not words:
     st.info("👆 Enter a few words above and press 'Start My Practice' to begin!")
     st.stop()
+
+if not st.session_state.quiz_words:
+    st.session_state.quiz_words = words.copy()
 
 key = api_key.strip() if api_key else get_api_key()
 analysis = {}
@@ -326,19 +356,46 @@ if error_detail and key:
     st.warning(f"Note: Full AI notes are limited right now ({error_detail}). Chinese pinyin is still provided!")
 
 st.subheader("📖 Step 2: Let's learn our words!")
+
+# Progressive Mastery Summary Cards
+m_col1, m_col2 = st.columns(2)
+with m_col1:
+    st.markdown(f"🌟 **Mastered Words:** {len(st.session_state.mastered_words)}")
+with m_col2:
+    st.markdown(f"🔴 **Needs Practice:** {len(st.session_state.unfamiliar_words)}")
+
 for index, word in enumerate(words):
     info = analysis.get(word, {})
-    with st.expander(f"Word {index + 1}:  {word}  ({guess_language(word)})", expanded=False):
+    status_tag = ""
+    if word in st.session_state.mastered_words:
+        status_tag = " ✅ [Mastered]"
+    elif word in st.session_state.unfamiliar_words:
+        status_tag = " 🔴 [Needs Practice]"
+
+    with st.expander(f"Word {index + 1}:  {word} {status_tag}", expanded=False):
         show_analysis(word, info)
 
 st.divider()
 st.subheader("🎯 Step 3: Dictation Time!")
 st.write("Listen to the pronunciation or hint, then write or type your answer!")
 
-if st.session_state.quiz_index >= len(words):
+active_quiz_words = st.session_state.quiz_words
+
+if st.session_state.quiz_index >= len(active_quiz_words):
     st.balloons()
-    st.success(f"🎉 Super job! You finished all your words! Final Score: {st.session_state.quiz_score} / {len(words)}")
-    if st.button("🔄 Try Again!", type="primary"):
+    st.success(f"🎉 Super job! You finished this practice set! Final Score: {st.session_state.quiz_score} / {len(active_quiz_words)}")
+    
+    col_reset, col_review = st.columns(2)
+    if col_reset.button("🔄 Restart All Words", type="primary"):
+        st.session_state.quiz_words = words.copy()
+        st.session_state.quiz_index = 0
+        st.session_state.quiz_score = 0
+        st.session_state.quiz_checked = False
+        st.session_state.quiz_answer = ""
+        st.rerun()
+
+    if st.session_state.unfamiliar_words and col_review.button(f"🔴 Practice Unfamiliar Only ({len(st.session_state.unfamiliar_words)})", type="secondary"):
+        st.session_state.quiz_words = list(st.session_state.unfamiliar_words)
         st.session_state.quiz_index = 0
         st.session_state.quiz_score = 0
         st.session_state.quiz_checked = False
@@ -346,11 +403,11 @@ if st.session_state.quiz_index >= len(words):
         st.rerun()
 else:
     idx = st.session_state.quiz_index
-    target = words[idx]
+    target = active_quiz_words[idx]
     info = analysis.get(target, {})
     is_chinese = guess_language(target) == "Chinese"
 
-    st.progress((idx) / len(words), text=f"⭐ Progress: Word {idx + 1} of {len(words)} | Score: {st.session_state.quiz_score}")
+    st.progress((idx) / len(active_quiz_words), text=f"⭐ Progress: Word {idx + 1} of {len(active_quiz_words)} | Score: {st.session_state.quiz_score}")
     
     with st.container(border=True):
         st.markdown(f"### ❓ Question {idx + 1}")
@@ -396,6 +453,11 @@ else:
                 st.session_state.quiz_checked = True
                 if st.session_state.quiz_answer.casefold() == target.casefold():
                     st.session_state.quiz_score += 1
+                    st.session_state.mastered_words.add(target)
+                    st.session_state.unfamiliar_words.discard(target)
+                else:
+                    st.session_state.unfamiliar_words.add(target)
+                    st.session_state.mastered_words.discard(target)
                 st.rerun()
 
         if st.session_state.quiz_checked:
@@ -407,10 +469,14 @@ else:
                 col_yes, col_no = st.columns(2)
                 if col_yes.button("I got it right! ✅", key=f"self-correct-{idx}"):
                     st.session_state.quiz_score += 1
+                    st.session_state.mastered_words.add(target)
+                    st.session_state.unfamiliar_words.discard(target)
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.rerun()
                 if col_no.button("Need more practice ❌", key=f"self-wrong-{idx}"):
+                    st.session_state.unfamiliar_words.add(target)
+                    st.session_state.mastered_words.discard(target)
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.rerun()
@@ -419,7 +485,7 @@ else:
                     st.success("🎉 Correct! Fantastic job!")
                 else:
                     st.error(f"Almost! The correct spelling is: **{target}**")
-                if st.button("Next Word ➡️" if idx + 1 < len(words) else "Finish Quiz 🏆", type="primary", key=f"next-{idx}"):
+                if st.button("Next Word ➡️" if idx + 1 < len(active_quiz_words) else "Finish Quiz 🏆", type="primary", key=f"next-{idx}"):
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.session_state.quiz_answer = ""
