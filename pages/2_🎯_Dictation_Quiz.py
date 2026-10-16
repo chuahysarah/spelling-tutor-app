@@ -322,6 +322,9 @@ if current_idx >= total_q:
         st.session_state[f"quiz_logged_{active_child}"] = True
         st.info(f"✅ {active_child}'s score and practice details have been saved to Parent History!")
 
+    if st.button("🌱 See My Word Garden", type="primary"):
+        st.switch_page("pages/4_🌱_Word_Garden.py")
+
     if st.button("🔄 Restart Quiz", type="primary"):
         reset_quiz_state(active_child)
         st.rerun()
