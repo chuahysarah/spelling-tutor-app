@@ -90,7 +90,20 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        resp = requests.post(url, json=payload, timeout=10)
+        # Try query parameter first
+        headers = {"Content-Type": "application/json"}
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        # Fallback to headers if query param auth fails
+        if resp.status_code == 401:
+            fallback_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+            headers_fallback = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": api_key,
+                "Authorization": f"Bearer {api_key}"
+            }
+            resp = requests.post(fallback_url, json=payload, headers=headers_fallback, timeout=10)
+
         if resp.status_code == 200:
             res_json = resp.json()
             text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
@@ -178,7 +191,7 @@ if st.button("🔊 Play Word Sound", type="secondary"):
 
 st.write("---")
 
-# Dedicated Drawing Canvas with explicit return_image_data=True
+# Dedicated Drawing Canvas
 st.subheader("✏️ Handwriting Practice Pad")
 st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
 
