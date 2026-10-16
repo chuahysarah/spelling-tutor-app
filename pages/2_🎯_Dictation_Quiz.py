@@ -49,13 +49,14 @@ def fetch_available_lists() -> dict[str, str]:
     return {}
 
 
-def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
+def log_completed_quiz(child_name: str, week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
     if API_URL:
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             payload = {
                 "action": "log_quiz",
                 "timestamp": now_str,
+                "child_name": child_name,
                 "week_title": week_title,
                 "score": score,
                 "total_words": total_words,
@@ -141,16 +142,35 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-def reset_quiz_state():
-    st.session_state.quiz_index = 0
-    st.session_state.quiz_score = 0
-    st.session_state.quiz_checked = False
-    st.session_state.quiz_logged = False
-    st.session_state.mastered_words = set()
-    st.session_state.unfamiliar_words = set()
+def reset_quiz_state(child_name: str):
+    st.session_state[f"quiz_index_{child_name}"] = 0
+    st.session_state[f"quiz_score_{child_name}"] = 0
+    st.session_state[f"quiz_checked_{child_name}"] = False
+    st.session_state[f"quiz_logged_{child_name}"] = False
+    st.session_state[f"mastered_words_{child_name}"] = set()
+    st.session_state[f"unfamiliar_words_{child_name}"] = set()
 
 
-st.title("🎯 Spelling & Chinese Dictation Quiz")
+# Sidebar Child Switcher
+if "children" not in st.session_state:
+    st.session_state.children = ["Alex", "Emma"]
+if "active_child" not in st.session_state:
+    st.session_state.active_child = st.session_state.children[0]
+
+with st.sidebar:
+    st.subheader("👤 Practicing Learner")
+    selected_child = st.selectbox(
+        "Current Child:",
+        options=st.session_state.children,
+        index=st.session_state.children.index(st.session_state.active_child)
+    )
+    if selected_child != st.session_state.active_child:
+        st.session_state.active_child = selected_child
+        st.rerun()
+
+active_child = st.session_state.active_child
+
+st.title(f"🎯 Hi {active_child}! Dictation Quiz Time!")
 
 available_lists = fetch_available_lists()
 list_titles = list(available_lists.keys())
@@ -159,69 +179,69 @@ if not list_titles:
     st.warning("⚠️ No spelling lists available. Please create a list on the home page first!")
     st.stop()
 
-current_active = st.session_state.get("active_week", "")
+current_active = st.session_state.get(f"active_week_{active_child}", "")
 if current_active not in list_titles and list_titles:
-    st.session_state.active_week = list_titles[0]
-    st.session_state.raw_words = available_lists[list_titles[0]]
-    reset_quiz_state()
+    st.session_state[f"active_week_{active_child}"] = list_titles[0]
+    st.session_state[f"raw_words_{active_child}"] = available_lists[list_titles[0]]
+    reset_quiz_state(active_child)
 
-default_idx = list_titles.index(st.session_state.active_week) if st.session_state.active_week in list_titles else 0
+default_idx = list_titles.index(st.session_state[f"active_week_{active_child}"]) if st.session_state[f"active_week_{active_child}"] in list_titles else 0
 
 selected_list_title = st.selectbox(
-    "📋 Select List to Dictate:",
+    f"📋 Select Dictation List for {active_child}:",
     options=list_titles,
-    index=default_idx,
-    help="Choose the weekly list you want to practice now."
+    index=default_idx
 )
 
-if selected_list_title != st.session_state.get("active_week"):
-    st.session_state.active_week = selected_list_title
-    st.session_state.raw_words = available_lists[selected_list_title]
-    reset_quiz_state()
+if selected_list_title != st.session_state.get(f"active_week_{active_child}"):
+    st.session_state[f"active_week_{active_child}"] = selected_list_title
+    st.session_state[f"raw_words_{active_child}"] = available_lists[selected_list_title]
+    reset_quiz_state(active_child)
     st.rerun()
 
-quiz_words = normalize_words(st.session_state.get("raw_words", ""))
+quiz_words = normalize_words(st.session_state.get(f"raw_words_{active_child}", ""))
 
 if not quiz_words:
     st.warning("⚠️ No words found in the selected list. Please choose a different list above!")
     st.stop()
 
-if "quiz_index" not in st.session_state:
-    st.session_state.quiz_index = 0
-if "quiz_score" not in st.session_state:
-    st.session_state.quiz_score = 0
-if "quiz_checked" not in st.session_state:
-    st.session_state.quiz_checked = False
-if "quiz_logged" not in st.session_state:
-    st.session_state.quiz_logged = False
-if "mastered_words" not in st.session_state:
-    st.session_state.mastered_words = set()
-if "unfamiliar_words" not in st.session_state:
-    st.session_state.unfamiliar_words = set()
+if f"quiz_index_{active_child}" not in st.session_state:
+    st.session_state[f"quiz_index_{active_child}"] = 0
+if f"quiz_score_{active_child}" not in st.session_state:
+    st.session_state[f"quiz_score_{active_child}"] = 0
+if f"quiz_checked_{active_child}" not in st.session_state:
+    st.session_state[f"quiz_checked_{active_child}"] = False
+if f"quiz_logged_{active_child}" not in st.session_state:
+    st.session_state[f"quiz_logged_{active_child}"] = False
+if f"mastered_words_{active_child}" not in st.session_state:
+    st.session_state[f"mastered_words_{active_child}"] = set()
+if f"unfamiliar_words_{active_child}" not in st.session_state:
+    st.session_state[f"unfamiliar_words_{active_child}"] = set()
 
 total_q = len(quiz_words)
-current_idx = st.session_state.quiz_index
+current_idx = st.session_state[f"quiz_index_{active_child}"]
 
 if current_idx >= total_q:
     st.balloons()
-    st.success("🎉 Quiz Completed! Outstanding effort!")
+    st.success(f"🎉 Quiz Completed! Outstanding effort, {active_child}!")
     
-    final_score = st.session_state.quiz_score
+    final_score = st.session_state[f"quiz_score_{active_child}"]
     st.metric(label="Final Score", value=f"{final_score} / {total_q}")
 
-    if not st.session_state.quiz_logged:
+    if not st.session_state[f"quiz_logged_{active_child}"]:
         log_completed_quiz(
+            child_name=active_child,
             week_title=selected_list_title,
             score=final_score,
             total_words=total_q,
-            mastered=st.session_state.mastered_words,
-            unfamiliar=st.session_state.unfamiliar_words
+            mastered=st.session_state[f"mastered_words_{active_child}"],
+            unfamiliar=st.session_state[f"unfamiliar_words_{active_child}"]
         )
-        st.session_state.quiz_logged = True
-        st.info("✅ Your score and practice details have been saved to the Parent History!")
+        st.session_state[f"quiz_logged_{active_child}"] = True
+        st.info(f"✅ {active_child}'s score and practice details have been saved to Parent History!")
 
     if st.button("🔄 Restart Quiz", type="primary"):
-        reset_quiz_state()
+        reset_quiz_state(active_child)
         st.rerun()
     st.stop()
 
@@ -250,11 +270,11 @@ canvas_result = st_canvas(
     drawing_mode="freedraw",
     update_streamlit=True,
     return_image_data=True,
-    key=f"canvas_{selected_list_title}_{current_idx}"
+    key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
 )
 
 if not is_chinese:
-    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{selected_list_title}_{current_idx}")
+    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{active_child}_{selected_list_title}_{current_idx}")
 
 col1, col2 = st.columns(2)
 
@@ -277,33 +297,33 @@ with col1:
                             img_data, target_word, GEMINI_API_KEY
                         )
                         if is_correct:
-                            st.success(f"🌟 Correct! Awesome handwriting: **{target_word}**")
+                            st.success(f"🌟 Correct! Awesome handwriting, {active_child}: **{target_word}**")
                             st.write(f"💬 {feedback}")
-                            st.session_state.quiz_score += 1
-                            st.session_state.mastered_words.add(target_word)
+                            st.session_state[f"quiz_score_{active_child}"] += 1
+                            st.session_state[f"mastered_words_{active_child}"].add(target_word)
                         else:
                             st.error(f"❌ Target Character: **{target_word}**")
                             st.write(f"💬 {feedback}")
-                            st.session_state.unfamiliar_words.add(target_word)
-                        st.session_state.quiz_checked = True
+                            st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
+                        st.session_state[f"quiz_checked_{active_child}"] = True
                 else:
                     st.warning("✏️ Canvas stroke data empty! Write on the pad before clicking Grade.")
         else:
             clean_user = user_answer.strip().casefold() if 'user_answer' in locals() else ""
             clean_target = target_word.strip().casefold()
             if clean_user == clean_target:
-                st.success(f"🌟 Correct! Awesome job: **{target_word}**")
-                st.session_state.quiz_score += 1
-                st.session_state.mastered_words.add(target_word)
+                st.success(f"🌟 Correct! Awesome job, {active_child}: **{target_word}**")
+                st.session_state[f"quiz_score_{active_child}"] += 1
+                st.session_state[f"mastered_words_{active_child}"].add(target_word)
             else:
                 st.error(f"❌ Correct Spelling: **{target_word}**")
-                st.session_state.unfamiliar_words.add(target_word)
+                st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
 
-            st.session_state.quiz_checked = True
+            st.session_state[f"quiz_checked_{active_child}"] = True
 
 with col2:
-    if st.session_state.quiz_checked:
+    if st.session_state[f"quiz_checked_{active_child}"]:
         if st.button("➡️ Next Word", type="secondary"):
-            st.session_state.quiz_index += 1
-            st.session_state.quiz_checked = False
+            st.session_state[f"quiz_index_{active_child}"] += 1
+            st.session_state[f"quiz_checked_{active_child}"] = False
             st.rerun()
