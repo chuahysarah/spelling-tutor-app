@@ -1,169 +1,64 @@
 from __future__ import annotations
 
-import base64
-import datetime
-import io
 import json
-import re
 import requests
-import numpy as np
 import streamlit as st
-from gtts import gTTS
-from PIL import Image
-from streamlit_drawable_canvas import st_canvas
 
-st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="centered")
+st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
-
-def get_gemini_key() -> str:
-    key = ""
-    if "GEMINI_API_KEY" in st.secrets:
-        key = str(st.secrets["GEMINI_API_KEY"])
-    elif "gemini_api_key" in st.secrets:
-        key = str(st.secrets["gemini_api_key"])
-    elif st.session_state.get("api_key"):
-        key = str(st.session_state.get("api_key"))
-    
-    return key.strip().strip("'").strip('"')
+DEFAULT_LISTS = {
+    "Week 1: School & Friends": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
+    "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
+}
 
 
-GEMINI_API_KEY = get_gemini_key()
-
-
-def fetch_available_lists() -> dict[str, str]:
-    if "archived_lists" in st.session_state and st.session_state.archived_lists:
-        return st.session_state.archived_lists
-
+def fetch_remote_lists() -> dict[str, str]:
     if API_URL:
         try:
-            resp = requests.get(f"{API_URL}?action=get_lists", timeout=5)
+            resp = requests.get(API_URL, params={"action": "get_lists"}, allow_redirects=True, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict) and data:
-                    st.session_state.archived_lists = data
                     return data
         except Exception:
             pass
-    return {}
+    return DEFAULT_LISTS
 
 
-def log_completed_quiz(child_name: str, week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
+def save_remote_list(title: str, words: str) -> None:
     if API_URL:
         try:
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            payload = {
-                "action": "log_quiz",
-                "timestamp": now_str,
-                "child_name": child_name,
-                "week_title": week_title,
-                "score": score,
-                "total_words": total_words,
-                "mastered": ", ".join(mastered) if mastered else "None",
-                "unfamiliar": ", ".join(unfamiliar) if unfamiliar else "None"
-            }
-            requests.post(API_URL, json=payload, timeout=5)
+            requests.post(API_URL, json={"action": "save", "title": title, "words": words}, timeout=5)
         except Exception as e:
-            st.error(f"Failed to log quiz attempt: {e}")
+            st.error(f"Failed to sync save to database: {e}")
 
 
-def speak_text(text: str):
-    try:
-        lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
-        tts = gTTS(text=text, lang=lang, slow=False)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        st.audio(fp, format="audio/mp3", autoplay=True)
-    except Exception:
-        st.warning("Audio playback failed.")
+def delete_remote_list(title: str) -> None:
+    if API_URL:
+        try:
+            requests.post(API_URL, json={"action": "delete", "title": title}, timeout=5)
+        except Exception as e:
+            st.error(f"Failed to sync delete to database: {e}")
 
 
-def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    try:
-        clean_token = api_key.strip().strip("'").strip('"')
-        url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
-        
-        if isinstance(image_data, np.ndarray):
-            img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
-        else:
-            img = image_data.convert('RGB')
+# Initialize Global Lists
+fetched = fetch_remote_lists()
+if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
+    st.session_state.archived_lists = fetched
+else:
+    st.session_state.archived_lists.update(fetched)
 
-        buffered = io.BytesIO()
-        img.save(buffered, format="JPEG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+# Initialize Multi-Child Profiles
+if "children" not in st.session_state:
+    st.session_state.children = ["Alex", "Emma"]
 
-        prompt = (
-            f"You are evaluating a child's handwritten Chinese character. "
-            f"The intended target character is '{target_char}'. "
-            f"Analyze the image strokes and respond strictly in valid JSON format with two keys: "
-            f"'is_correct' (boolean: true or false) and 'feedback' (string: short encouraging feedback in English)."
-        )
+if "active_child" not in st.session_state:
+    st.session_state.active_child = st.session_state.children[0]
 
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {"inline_data": {"mime_type": "image/jpeg", "data": img_str}}
-                ]
-            }]
-        }
-
-        headers_bearer = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {clean_token}"
-        }
-
-        headers_goog = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": clean_token
-        }
-
-        resp = requests.post(url, json=payload, headers=headers_bearer, timeout=12)
-
-        if resp.status_code == 200:
-            res_json = resp.json()
-            text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
-            match = re.search(r'\{.*\}', text_resp, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
-            return True, "Handwriting evaluated!"
-
-        resp_fb = requests.post(url, json=payload, headers=headers_goog, timeout=12)
-        if resp_fb.status_code == 200:
-            res_json = resp_fb.json()
-            text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
-            match = re.search(r'\{.*\}', text_resp, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
-            return True, "Handwriting evaluated!"
-            
-        return False, f"API Error ({resp.status_code}): {resp.text}"
-    except Exception as e:
-        return False, f"Error calling Gemini Vision API: {e}"
-
-
-def normalize_words(raw: str) -> list[str]:
-    seen: set[str] = set()
-    result = []
-    for line in raw.replace("，", "\n").replace(",", "\n").splitlines():
-        item = line.strip()
-        if item and item.casefold() not in seen:
-            seen.add(item.casefold())
-            result.append(item)
-    return result
-
-
-def reset_quiz_state(child_name: str):
-    st.session_state[f"quiz_index_{child_name}"] = 0
-    st.session_state[f"quiz_score_{child_name}"] = 0
-    st.session_state[f"quiz_checked_{child_name}"] = False
-    st.session_state[f"quiz_logged_{child_name}"] = False
-    st.session_state[f"mastered_words_{child_name}"] = set()
-    st.session_state[f"unfamiliar_words_{child_name}"] = set()
+if "parent_unlocked" not in st.session_state:
+    st.session_state.parent_unlocked = False
 
 
 def rename_child_profile(old_name: str, new_name: str):
@@ -182,16 +77,12 @@ def rename_child_profile(old_name: str, new_name: str):
             st.session_state[new_key] = st.session_state.pop(old_key)
 
 
-# Sidebar Child Switcher
-if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
-if "active_child" not in st.session_state:
-    st.session_state.active_child = st.session_state.children[0]
-
+# Sidebar Profile Controls
 with st.sidebar:
-    st.subheader("👤 Practicing Learner")
+    st.subheader("👤 Who is practicing today?")
+    
     selected_child = st.selectbox(
-        "Current Child:",
+        "Select Learner:",
         options=st.session_state.children,
         index=st.session_state.children.index(st.session_state.active_child)
     )
@@ -201,9 +92,8 @@ with st.sidebar:
 
     active_child = st.session_state.active_child
 
-    # Edit Name
-    with st.expander("✏️ Edit Learner Name", expanded=False):
-        edited_name = st.text_input("New Name:", value=active_child, key=f"p2_rename_input_{active_child}")
+    with st.expander("✏️ Edit Current Learner Name", expanded=False):
+        edited_name = st.text_input("New Name:", value=active_child, key=f"rename_input_{active_child}")
         if st.button("Save New Name", type="primary", use_container_width=True):
             clean_rename = edited_name.strip()
             if clean_rename and clean_rename != active_child:
@@ -211,162 +101,125 @@ with st.sidebar:
                 st.success(f"Renamed to {clean_rename}!")
                 st.rerun()
 
+    with st.expander("➕ Add New Learner", expanded=False):
+        new_child_name = st.text_input("Child's Name:", placeholder="e.g., Lucas", key="add_new_child_input")
+        if st.button("Add Learner Profile", type="secondary", use_container_width=True):
+            clean_name = new_child_name.strip()
+            if clean_name and clean_name not in st.session_state.children:
+                st.session_state.children.append(clean_name)
+                st.session_state.active_child = clean_name
+                st.success(f"Added profile for {clean_name}!")
+                st.rerun()
+
 active_child = st.session_state.active_child
 
-st.title(f"🎯 Hi {active_child}! Dictation Quiz Time!")
+# App Hero Banner
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+html, body, [class*="css"] {{ font-family: 'Fredoka', cursive, sans-serif; }}
+.hero {{
+    padding: 2rem 1.5rem; 
+    border-radius: 24px; 
+    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
+    border: 3px solid #fde047;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}}
+.hero h1 {{ color: #0284c7; margin-bottom: 0.5rem; font-size: 2.2rem; }}
+.hero p {{ color: #334155; font-size: 1.1rem; margin: 0; }}
+.action-card {{
+    padding: 1.2rem;
+    border-radius: 16px;
+    border: 2px solid #e2e8f0;
+    text-align: center;
+    background: #ffffff;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+}}
+</style>
+<div class="hero">
+    <h1>👋 Hi {active_child}! Welcome to Magic Spelling World! ✏️</h1>
+    <p>Listen, practice handwriting, and master Chinese & English spelling today!</p>
+</div>
+""", unsafe_allow_html=True)
 
-available_lists = fetch_available_lists()
-list_titles = list(available_lists.keys())
-
-if not list_titles:
-    st.warning("⚠️ No spelling lists available. Please create a list on the home page first!")
-    st.stop()
-
-current_active = st.session_state.get(f"active_week_{active_child}", "")
-if current_active not in list_titles and list_titles:
-    st.session_state[f"active_week_{active_child}"] = list_titles[0]
-    st.session_state[f"raw_words_{active_child}"] = available_lists[list_titles[0]]
-    reset_quiz_state(active_child)
-
-default_idx = list_titles.index(st.session_state[f"active_week_{active_child}"]) if st.session_state[f"active_week_{active_child}"] in list_titles else 0
-
-selected_list_title = st.selectbox(
-    f"📋 Select Dictation List for {active_child}:",
-    options=list_titles,
-    index=default_idx
-)
-
-if selected_list_title != st.session_state.get(f"active_week_{active_child}"):
-    st.session_state[f"active_week_{active_child}"] = selected_list_title
-    st.session_state[f"raw_words_{active_child}"] = available_lists[selected_list_title]
-    reset_quiz_state(active_child)
-    st.rerun()
-
-quiz_words = normalize_words(st.session_state.get(f"raw_words_{active_child}", ""))
-
-if not quiz_words:
-    st.warning("⚠️ No words found in the selected list. Please choose a different list above!")
-    st.stop()
-
-if f"quiz_index_{active_child}" not in st.session_state:
-    st.session_state[f"quiz_index_{active_child}"] = 0
-if f"quiz_score_{active_child}" not in st.session_state:
-    st.session_state[f"quiz_score_{active_child}"] = 0
-if f"quiz_checked_{active_child}" not in st.session_state:
-    st.session_state[f"quiz_checked_{active_child}"] = False
-if f"quiz_logged_{active_child}" not in st.session_state:
-    st.session_state[f"quiz_logged_{active_child}"] = False
-if f"mastered_words_{active_child}" not in st.session_state:
-    st.session_state[f"mastered_words_{active_child}"] = set()
-if f"unfamiliar_words_{active_child}" not in st.session_state:
-    st.session_state[f"unfamiliar_words_{active_child}"] = set()
-
-total_q = len(quiz_words)
-current_idx = st.session_state[f"quiz_index_{active_child}"]
-
-if current_idx >= total_q:
-    st.balloons()
-    st.success(f"🎉 Quiz Completed! Outstanding effort, {active_child}!")
-    
-    final_score = st.session_state[f"quiz_score_{active_child}"]
-    st.metric(label="Final Score", value=f"{final_score} / {total_q}")
-
-    if not st.session_state[f"quiz_logged_{active_child}"]:
-        log_completed_quiz(
-            child_name=active_child,
-            week_title=selected_list_title,
-            score=final_score,
-            total_words=total_q,
-            mastered=st.session_state[f"mastered_words_{active_child}"],
-            unfamiliar=st.session_state[f"unfamiliar_words_{active_child}"]
-        )
-        st.session_state[f"quiz_logged_{active_child}"] = True
-        st.info(f"✅ {active_child}'s score and practice details have been saved to Parent History!")
-
-    if st.button("🔄 Restart Quiz", type="primary"):
-        reset_quiz_state(active_child)
-        st.rerun()
-    st.stop()
-
-target_word = quiz_words[current_idx]
-is_chinese = bool(re.search(r'[\u4e00-\u9fff]', target_word))
-
-st.progress((current_idx) / total_q)
-st.caption(f"Question {current_idx + 1} of {total_q} — **{selected_list_title}**")
-
-st.write("### 🔊 Listen and write down the word:")
-if st.button("🔊 Play Word Sound", type="secondary"):
-    speak_text(target_word)
-
-st.write("---")
-
-st.subheader("✏️ Handwriting Practice Pad")
-st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
-
-canvas_result = st_canvas(
-    fill_color="rgba(255, 255, 255, 0)",
-    stroke_width=6,
-    stroke_color="#000000",
-    background_color="#ffffff",
-    height=260,
-    width=340,
-    drawing_mode="freedraw",
-    update_streamlit=True,
-    return_image_data=True,
-    key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
-)
-
-if not is_chinese:
-    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{active_child}_{selected_list_title}_{current_idx}")
+st.write(f"### 🚀 What would **{active_child}** like to do?")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("✅ Grade Answer", type="primary"):
-        if is_chinese:
-            if not GEMINI_API_KEY:
-                st.error("❌ `GEMINI_API_KEY` is missing from Streamlit Secrets!")
-            else:
-                img_data = None
-                try:
-                    if canvas_result is not None and canvas_result.image_data is not None:
-                        img_data = canvas_result.image_data
-                except Exception as e:
-                    st.warning(f"Could not read canvas image data: {e}")
-
-                if img_data is not None:
-                    with st.spinner("Analyzing Chinese handwriting with Gemini AI..."):
-                        is_correct, feedback = grade_handwriting_with_gemini(
-                            img_data, target_word, GEMINI_API_KEY
-                        )
-                        if is_correct:
-                            st.success(f"🌟 Correct! Awesome handwriting, {active_child}: **{target_word}**")
-                            st.write(f"💬 {feedback}")
-                            st.session_state[f"quiz_score_{active_child}"] += 1
-                            st.session_state[f"mastered_words_{active_child}"].add(target_word)
-                        else:
-                            st.error(f"❌ Target Character: **{target_word}**")
-                            st.write(f"💬 {feedback}")
-                            st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
-                        st.session_state[f"quiz_checked_{active_child}"] = True
-                else:
-                    st.warning("✏️ Canvas stroke data empty! Write on the pad before clicking Grade.")
-        else:
-            clean_user = user_answer.strip().casefold() if 'user_answer' in locals() else ""
-            clean_target = target_word.strip().casefold()
-            if clean_user == clean_target:
-                st.success(f"🌟 Correct! Awesome job, {active_child}: **{target_word}**")
-                st.session_state[f"quiz_score_{active_child}"] += 1
-                st.session_state[f"mastered_words_{active_child}"].add(target_word)
-            else:
-                st.error(f"❌ Correct Spelling: **{target_word}**")
-                st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
-
-            st.session_state[f"quiz_checked_{active_child}"] = True
+    st.markdown("""
+    <div class="action-card">
+        <h3>📖 Learn Words</h3>
+        <p>Explore meanings, pinyin, stroke orders & memory tricks!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.write("")
+    if st.button(f"👉 Learn Words for {active_child}", type="primary", use_container_width=True):
+        st.switch_page("pages/1_📖_Learn_Words.py")
 
 with col2:
-    if st.session_state[f"quiz_checked_{active_child}"]:
-        if st.button("➡️ Next Word", type="secondary"):
-            st.session_state[f"quiz_index_{active_child}"] += 1
-            st.session_state[f"quiz_checked_{active_child}"] = False
+    st.markdown("""
+    <div class="action-card">
+        <h3>🎯 Dictation Quiz</h3>
+        <p>Listen to audio & test your handwriting with AI auto-grading!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.write("")
+    if st.button(f"👉 Start Dictation Quiz", type="primary", use_container_width=True):
+        st.switch_page("pages/2_🎯_Dictation_Quiz.py")
+
+st.divider()
+
+PARENT_PIN = "6666"
+
+with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
+    st.caption("Grown-ups only! Enter PIN to add, update, or delete spelling lists.")
+
+    if not st.session_state.parent_unlocked:
+        entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="pin_entry_field")
+        if entered_pin == PARENT_PIN:
+            st.session_state.parent_unlocked = True
             st.rerun()
+        elif entered_pin != "":
+            st.error("❌ Incorrect PIN. Please try again.")
+    else:
+        st.success("🔓 Unlocked!")
+        if st.button("🔒 Lock Parent Area Now", type="secondary"):
+            st.session_state.parent_unlocked = False
+            st.rerun()
+
+        st.write("---")
+        
+        st.write("### ➕ Add or Update List")
+        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 5: Animals & Weather")
+        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n事情\n生日")
+        
+        if st.button("💾 Save List to Google Sheets", type="primary"):
+            title_clean = new_week_title.strip()
+            words_clean = new_week_words.strip()
+            if title_clean and words_clean:
+                st.session_state.archived_lists[title_clean] = words_clean
+                save_remote_list(title_clean, words_clean)
+                st.session_state.parent_unlocked = False
+                st.success(f"Saved '{title_clean}' successfully!")
+                st.rerun()
+            else:
+                st.warning("Please enter both a title and words before saving.")
+
+        st.divider()
+
+        st.write("### 🗑️ Delete an Existing List")
+        if st.session_state.archived_lists:
+            list_to_delete = st.selectbox(
+                "Select list to delete:",
+                options=list(st.session_state.archived_lists.keys()),
+                key="delete_list_select"
+            )
+            if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
+                del st.session_state.archived_lists[list_to_delete]
+                delete_remote_list(list_to_delete)
+                st.session_state.parent_unlocked = False
+                st.rerun()
+        else:
+            st.caption("No archived lists to delete.")
