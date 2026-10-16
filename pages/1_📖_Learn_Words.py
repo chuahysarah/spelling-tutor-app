@@ -5,6 +5,16 @@ import os
 import re
 from typing import Any
 from html import escape
+from pathlib import Path
+import sys
+
+APP_ROOT = Path(__file__).resolve().parents[1]
+if str(APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(APP_ROOT))
+from practice_bookmarks import (
+    fetch_bookmarks, rename_saved_practices, render_bookmark_checkbox,
+    show_bookmark_feedback,
+)
 
 import requests
 import streamlit as st
@@ -280,6 +290,14 @@ select:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-v
         animation:none !important; transform:none !important;
     }
 }
+
+/* Sidebar text rules must not override high-contrast button labels. */
+[data-testid="stSidebar"] [data-testid="stButton"] button p,
+[data-testid="stSidebar"] [data-testid="stButton"] button span { color:#ffffff !important; }
+[data-testid="stSidebar"] [data-testid="stButton"] button:disabled p,
+[data-testid="stSidebar"] [data-testid="stButton"] button:disabled span { color:#374151 !important; }
+[data-testid="stCheckbox"] label { min-height:48px; align-items:center; }
+[data-testid="stCheckbox"] label p { font-weight:700 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -754,7 +772,11 @@ input[type="checkbox"] { width:22px; height:22px; accent-color:#173f91; }
 
 def rename_child_profile(old_name: str, new_name: str):
     if not new_name or new_name == old_name:
-        return
+        return False
+    bookmark_error = rename_saved_practices(API_URL, old_name, new_name)
+    if bookmark_error:
+        st.error("Cannot move saved practices to the new learner name: " + bookmark_error)
+        return False
     if old_name in st.session_state.children:
         idx = st.session_state.children.index(old_name)
         st.session_state.children[idx] = new_name
@@ -768,6 +790,7 @@ def rename_child_profile(old_name: str, new_name: str):
             st.session_state[new_key] = st.session_state.pop(old_key)
 
     sync_child_profiles(st.session_state.children)
+    return True
 
 
 def prepare_item_navigation(state: Any, child_name: str, list_title: str, items: list[str]) -> tuple[str, int]:
@@ -816,15 +839,17 @@ with st.sidebar:
         st.rerun()
 
     active_child = st.session_state.active_child
+    if st.button("More Practices!", key="open_saved_practices", use_container_width=True):
+        st.switch_page("pages/5_More_Practices.py")
 
     with st.expander("✏️ Edit Learner Name", expanded=False):
         edited_name = st.text_input("New Name:", value=active_child, key=f"p1_rename_input_{active_child}")
         if st.button("Save New Name", type="primary", use_container_width=True):
             clean_rename = edited_name.strip()
             if clean_rename and clean_rename != active_child:
-                rename_child_profile(active_child, clean_rename)
-                st.success(f"Renamed to {clean_rename}!")
-                st.rerun()
+                if rename_child_profile(active_child, clean_rename):
+                    st.success(f"Renamed to {clean_rename}!")
+                    st.rerun()
 
 active_child = st.session_state.active_child
 
@@ -888,6 +913,9 @@ if key and words and (
 
 analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
+bookmark_records, bookmark_error = fetch_bookmarks(API_URL, active_child)
+show_bookmark_feedback(active_child)
+
 # One item at a time: this changes presentation, not analysis or spelling rules.
 index_key, index = prepare_item_navigation(st.session_state, active_child, selected_week, words)
 picker_key = f"learn_item_picker_{active_child}"
@@ -935,6 +963,7 @@ word = words[index]
 info = analysis.get(word, {})
 lang = guess_language(word)  # Do not trust the model to classify Chinese targets.
 with st.expander(f"Item {index + 1}:  {word} ({lang})", expanded=True):
+    render_bookmark_checkbox(API_URL, active_child, selected_week, word, bookmark_records, bookmark_error)
     audio_button(word, lang, f"audio-{word}")
     if lang == "English":
         syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
