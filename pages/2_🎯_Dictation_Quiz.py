@@ -66,7 +66,7 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends handwritten canvas drawing to Gemini 1.5 Flash Vision supporting AQ-format keys."""
+    """Sends handwritten canvas drawing directly to Gemini 1.5 Flash for vision auto-grading."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
@@ -95,13 +95,13 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        # Uses clean JSON headers without OAuth bearer tokens
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key
-        }
-
-        resp = requests.post(url, json=payload, headers=headers, timeout=12)
+        # Clean JSON payload request without conflicting authorization headers
+        resp = requests.post(
+            url, 
+            json=payload, 
+            headers={"Content-Type": "application/json"}, 
+            timeout=12
+        )
 
         if resp.status_code == 200:
             res_json = resp.json()
