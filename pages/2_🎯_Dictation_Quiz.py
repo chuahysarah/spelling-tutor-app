@@ -14,6 +14,28 @@ st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="c
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+
+html, body, [class*="css"], button, input, select {
+    font-family: 'Fredoka', cursive, sans-serif !important;
+    font-size: 1.25rem;
+}
+
+h1 { font-size: 2.8rem !important; color: #0284c7 !important; }
+h2 { font-size: 2.2rem !important; color: #0369a1 !important; }
+h3 { font-size: 1.8rem !important; color: #0f766e !important; }
+
+.stButton > button {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    border-radius: 20px !important;
+    padding: 0.7rem 1.4rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 def fetch_available_lists() -> dict[str, str]:
     if "archived_lists" in st.session_state and st.session_state.archived_lists:
@@ -72,12 +94,12 @@ def render_hanzi_animations(word: str) -> None:
     scripts = ""
     for i, char in enumerate(chinese_chars):
         div_id = f"target-{i}-{ord(char)}"
-        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff;"></div>'
-        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 100, height: 100, padding: 5, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 3px solid #bae6fd; border-radius: 16px; background: #ffffff;"></div>'
+        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 110, height: 110, padding: 6, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
 
     num_rows = (len(chinese_chars) + 2) // 3
-    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;">{targets}</div><script>{scripts}</script></body></html>"""
-    components.html(html_code, height=num_rows * 115 + 15)
+    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;">{targets}</div><script>{scripts}</script></body></html>"""
+    components.html(html_code, height=num_rows * 125 + 15)
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -237,17 +259,16 @@ with audio_col1:
 
 st.write("---")
 
-# Main Practice Layout
 if st.session_state[f"quiz_checked_{active_child}"]:
     col_pad, col_ref = st.columns([1, 1], gap="medium")
 else:
     col_pad, col_ref = st.columns([1, 0.01])
 
 with col_pad:
-    st.markdown("### ✏️ Your Writing")
+    st.markdown("### ✏️ Your Writing Pad")
     canvas_result = st_canvas(
         fill_color="rgba(255, 255, 255, 0)",
-        stroke_width=6,
+        stroke_width=7,
         stroke_color="#000000",
         background_color="#ffffff",
         height=280,
@@ -260,7 +281,7 @@ with col_pad:
 
 with col_ref:
     if st.session_state[f"quiz_checked_{active_child}"]:
-        st.markdown(f"### 🔍 Correct Answer: **{target_word}**")
+        st.markdown(f"### 🔍 Correct Word: **{target_word}**")
         if is_chinese:
             render_hanzi_animations(target_word)
         else:
@@ -268,7 +289,6 @@ with col_ref:
 
 st.write("---")
 
-# Bottom Controls & Evaluation
 if not st.session_state[f"quiz_checked_{active_child}"]:
     btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
     with btn_col2:
@@ -277,7 +297,7 @@ if not st.session_state[f"quiz_checked_{active_child}"]:
             st.rerun()
 else:
     if st.session_state[f"quiz_result_{active_child}"] is None:
-        st.markdown("<h4 style='text-align: center;'>📝 How did your writing look?</h4>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center;'>📝 How did your writing look?</h3>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         
         with c1:
