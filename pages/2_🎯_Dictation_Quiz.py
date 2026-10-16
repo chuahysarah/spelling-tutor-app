@@ -16,7 +16,6 @@ st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="c
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
-# Flexible Secret Key retrieval (handles lowercase, uppercase, and session_state)
 def get_gemini_key() -> str:
     key = st.session_state.get("api_key", "")
     if key:
@@ -33,7 +32,6 @@ st.title("🎯 Spelling & Chinese Dictation Quiz")
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
-    """Logs the final completed quiz stats into the Google Sheets History tab."""
     if API_URL:
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -52,7 +50,6 @@ def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: 
 
 
 def speak_text(text: str):
-    """Plays audio for English or Chinese target words."""
     try:
         lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -65,11 +62,9 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends the drawn canvas image directly to Gemini 1.5 Flash for vision auto-grading."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
-        # Convert canvas array to RGB JPEG image
         if isinstance(image_data, np.ndarray):
             img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
         else:
@@ -183,7 +178,7 @@ if st.button("🔊 Play Word Sound", type="secondary"):
 
 st.write("---")
 
-# Dedicated Drawing Canvas
+# Dedicated Drawing Canvas with explicit return_image_data=True
 st.subheader("✏️ Handwriting Practice Pad")
 st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
 
@@ -196,6 +191,7 @@ canvas_result = st_canvas(
     width=340,
     drawing_mode="freedraw",
     update_streamlit=True,
+    return_image_data=True,
     key=f"canvas_{current_idx}"
 )
 
@@ -208,7 +204,6 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Answer", type="primary"):
         if is_chinese:
-            # Diagnostics check
             if not GEMINI_API_KEY:
                 st.error("❌ `GEMINI_API_KEY` is empty or missing from Streamlit Secrets!")
                 st.info("Ensure your key in Secrets is named `GEMINI_API_KEY` or `gemini_api_key`.")
