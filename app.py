@@ -55,7 +55,7 @@ def local_pinyin(text: str) -> str:
 
 
 def get_available_models(api_key: str) -> list[str]:
-    """Dynamically query Google to get active model names for this API key."""
+    """Query Google to fetch valid model names for this API key."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
         resp = requests.get(url, timeout=10)
@@ -78,7 +78,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     if not api_key:
         return {}, "No API key configured."
     
-    prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character, e.g. ['横','竖','撇','捺']; do not invent detailed paths). For Chinese phrases, give pinyin and character-specific stroke count/radical/structure/stroke-order in fields as short lists where helpful. Keep explanations age-appropriate. Unknown facts should be marked null or '不确定', not guessed. Items: """ + json.dumps(words, ensure_ascii=False)
+    prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character as strings, e.g. ['横','竖','撇','捺']; do not invent detailed paths). For Chinese phrases, give pinyin and character-specific stroke count/radical/structure/stroke-order in fields as short lists where helpful. Keep explanations age-appropriate. Unknown facts should be marked null or '不确定', not guessed. Items: """ + json.dumps(words, ensure_ascii=False)
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -122,6 +122,21 @@ def audio_button(text: str, language: str, key: str) -> None:
         st.info(f"Audio could not be loaded right now. Please check your internet connection. ({type(exc).__name__})")
 
 
+def format_strokes(strokes_val: Any) -> str:
+    """Safely convert strokes output to formatted string regardless of data structure."""
+    if not strokes_val:
+        return "—"
+    if isinstance(strokes_val, list):
+        items = []
+        for item in strokes_val:
+            if isinstance(item, list):
+                items.append(" ".join(str(sub) for sub in item))
+            else:
+                items.append(str(item))
+        return "；".join(items)
+    return str(strokes_val)
+
+
 def show_analysis(word: str, info: dict[str, Any]) -> None:
     language = str(info.get("language") or guess_language(word))
     st.markdown(f'<div class="word-card"><h3 style="margin:0">{word}</h3></div>', unsafe_allow_html=True)
@@ -143,9 +158,11 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
         st.markdown(f"**总笔画 Stroke count:** {info.get('stroke_count') or 'Please verify with your class dictionary'}")
         st.markdown(f"**部首 Radical:** {info.get('radical') or 'Please verify with your class dictionary'}")
         st.markdown(f"**结构 Structure:** {info.get('structure') or '—'}")
+        
         strokes = info.get("strokes")
         if strokes:
-            st.markdown("**笔顺 Stroke order:** " + ("；".join(strokes) if isinstance(strokes, list) else str(strokes)))
+            st.markdown(f"**笔顺 Stroke order:** {format_strokes(strokes)}")
+            
         st.markdown(f"**记忆小贴士 Tip:** {info.get('spelling_tip', '—')}")
         st.caption("Stroke details are AI-generated study hints; check your textbook or teacher for the required stroke order.")
 
