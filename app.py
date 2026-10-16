@@ -254,9 +254,6 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
     else:
         py = str(info.get("pinyin") or local_pinyin(word))
         st.markdown(f"🗣️ **拼音 Pinyin:** `{py}`")
-        if py:
-            st.caption("Listen to the word:")
-            audio_button(py, "Chinese", f"pinyin-{word}")
             
         st.markdown("✍️ **Stroke Order Animation (动画笔顺):**")
         render_hanzi_animations(word)
