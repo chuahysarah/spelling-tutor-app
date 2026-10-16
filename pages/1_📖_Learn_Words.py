@@ -19,6 +19,7 @@ st.set_page_config(
 )
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
+ANALYSIS_SCHEMA_VERSION = 2
 
 CHINESE_MEMORY_DICT = {
     "事情": {
@@ -199,12 +200,15 @@ For each item, provide:
    - For CHINESE: Use a playful mix of English and Chinese explaining radicals and components! (e.g., "'情' has '忄' (heart) on the left side!", "'休' is a person '人' leaning against a tree '木'!").
    - For ENGLISH: Use fun mnemonics or phonics rules in English.
 6. pinyin: Chinese tone-marked pinyin or empty for English.
+7. sentence_translation: For Chinese example sentences, give a natural, accurate translation in simple English. For English sentences, use an empty string.
+8. sentence_phrase_explanation: For Chinese example sentences, explain the sentence in simple English by breaking it into 2-4 short chunks. Format each chunk as Chinese text — English meaning, and separate chunks with semicolons. For English sentences, give a short child-friendly paraphrase in English.
+Include both new fields for every item. Keep all translation and explanation text in English, even when explaining a Chinese word.
 
 Items: """ + json.dumps(words, ensure_ascii=False)
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}], 
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
     }
     
     clean_token = api_key.strip().strip("'").strip('"')
@@ -266,7 +270,7 @@ def rename_child_profile(old_name: str, new_name: str):
     
     st.session_state.active_child = new_name
 
-    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "cached_analysis_version", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
         old_key = f"{key_prefix}_{old_name}"
         new_key = f"{key_prefix}_{new_name}"
         if old_key in st.session_state:
@@ -330,6 +334,7 @@ if selected_week != st.session_state.get(f"active_week_{active_child}"):
     st.session_state[f"active_week_{active_child}"] = selected_week
     st.session_state[f"raw_words_{active_child}"] = available_lists[selected_week]
     st.session_state[f"cached_analysis_{active_child}"] = {}
+    st.session_state[f"cached_analysis_version_{active_child}"] = 0
     st.rerun()
 
 raw_words = st.session_state.get(f"raw_words_{active_child}", "")
@@ -344,11 +349,16 @@ if f"cached_analysis_{active_child}" not in st.session_state:
 
 key = get_api_key()
 
-if key and not st.session_state.get(f"cached_analysis_{active_child}") and words:
+analysis_version_key = f"cached_analysis_version_{active_child}"
+if key and words and (
+    not st.session_state.get(f"cached_analysis_{active_child}")
+    or st.session_state.get(analysis_version_key, 0) < ANALYSIS_SCHEMA_VERSION
+):
     with st.spinner(f"✨ Loading word details for {active_child}..."):
         data, err = get_analysis(words, key)
         if not err and data:
             st.session_state[f"cached_analysis_{active_child}"] = data
+            st.session_state[analysis_version_key] = ANALYSIS_SCHEMA_VERSION
 
 analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
@@ -381,6 +391,16 @@ for index, word in enumerate(words):
             render_hanzi_animations(word)
             st.write(f"💡 **Meaning:** {meaning}")
             st.write(f"💬 **Example:** {sentence}")
+            translation = str(info.get("sentence_translation") or "").strip()
+            phrase_explanation = str(info.get("sentence_phrase_explanation") or "").strip()
+            if translation:
+                st.write(f"🇬🇧 **English Translation:** {translation}")
+            else:
+                st.caption("English translation is not available for this example yet.")
+            if phrase_explanation:
+                st.write(f"🧩 **Phrase-by-Phrase:** {phrase_explanation}")
+            else:
+                st.caption("Phrase explanation is not available for this example yet.")
             if sentence:
                 audio_button(sentence, "Chinese", f"sentence-{word}")
             st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
