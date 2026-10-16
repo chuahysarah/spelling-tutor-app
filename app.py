@@ -297,25 +297,25 @@ else:
         if st.button("Show another hint", key=f"hint-{idx}"):
             st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Think about the sounds and syllables."))
         
-        # Chinese Handwritten Writing Grid vs English Text Box
+        # Chinese Handwritten Pad with update_streamlit=False to prevent WebSocket lag
         if is_chinese:
             st.markdown("✍️ **Write the Chinese characters on the writing pad below:**")
-            canvas_result = st_canvas(
+            
+            st_canvas(
                 fill_color="rgba(255, 255, 255, 0)",
-                stroke_width=5,
-                stroke_color="#1e293b",
+                stroke_width=4,
+                stroke_color="#0f172a",
                 background_color="#f8fafc",
-                height=220,
-                width=350,
+                height=200,
+                width=320,
                 drawing_mode="freedraw",
+                update_streamlit=False,  # Prevents lagging/hanging on every stroke
                 key=f"canvas-{idx}",
             )
-            st.caption("Use a finger, mouse, or stylus to practice writing.")
+            st.caption("Use your finger or stylus to write on the grid.")
             
-            # For self-grading or adult reveal
             if not st.session_state.quiz_checked:
-                c1, c2 = st.columns(2)
-                if c1.button("Reveal correct answer", type="primary", key=f"reveal-{idx}"):
+                if st.button("Check my handwriting 👁️", type="primary", key=f"reveal-{idx}"):
                     st.session_state.quiz_checked = True
                     st.rerun()
         else:
