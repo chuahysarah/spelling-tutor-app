@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
 import re
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
-
-DATA_FILE = "weekly_lists.json"
 
 st.markdown("""
 <style>
@@ -30,13 +27,23 @@ html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
 """, unsafe_allow_html=True)
 
 
+# Initialize Google Sheets Connection
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 def load_persistent_lists() -> dict[str, str]:
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    try:
+        df = conn.read(ttl=0)  # ttl=0 forces live fetch without old cache
+        result = {}
+        for _, row in df.iterrows():
+            title = str(row["week_title"]).strip()
+            words = str(row["words"]).replace("\\n", "\n").strip()
+            if title and words:
+                result[title] = words
+        if result:
+            return result
+    except Exception as e:
+        st.warning(f"Note: Reading from Google Sheets fallback mode ({e}).")
+    
     return {
         "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
         "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
@@ -45,10 +52,13 @@ def load_persistent_lists() -> dict[str, str]:
 
 def save_persistent_lists(data: dict[str, str]) -> None:
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        import pandas as pd
+        rows = [{"week_title": k, "words": v.replace("\n", "\\n")} for k, v in data.items()]
+        df = pd.DataFrame(rows)
+        conn.update(data=df)
+        st.success("Synced live to Google Sheets database!")
     except Exception as e:
-        st.error(f"Failed to save data: {e}")
+        st.error(f"Failed to sync to Google Sheets: {e}")
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -62,7 +72,7 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-# Initialize Persistent Weekly Archive in Session State
+# Load Permanent Archive from Google Sheets into Session State
 if "archived_lists" not in st.session_state:
     st.session_state.archived_lists = load_persistent_lists()
 
@@ -116,7 +126,6 @@ else:
 # Parent Section: PIN Locked Area with Auto-Lock and Auto-Clear Input Keys
 PARENT_PIN = "6666"
 
-# Ensure form widget keys exist in session state so we can clear them dynamically
 if "new_week_title_key" not in st.session_state:
     st.session_state.new_week_title_key = ""
 if "new_week_words_key" not in st.session_state:
@@ -131,7 +140,6 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
     if entered_pin == PARENT_PIN:
         st.success("🔓 Unlocked!")
         
-        # Manual Lock Button
         if st.button("🔒 Lock Parent Area Now", type="secondary"):
             st.session_state.parent_pin_input = ""
             st.rerun()
@@ -143,13 +151,11 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
         new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather", key="new_week_title_key")
         new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气", key="new_week_words_key")
         
-        if st.button("💾 Save & Auto-Lock", type="primary"):
+        if st.button("💾 Save to Google Sheets Database", type="primary"):
             if new_week_title.strip() and new_week_words.strip():
-                # Save to memory and JSON file
                 st.session_state.archived_lists[new_week_title.strip()] = new_week_words.strip()
                 save_persistent_lists(st.session_state.archived_lists)
                 
-                # Update active session data
                 st.session_state.active_week = new_week_title.strip()
                 st.session_state.raw_words = new_week_words.strip()
                 st.session_state.quiz_words = normalize_words(new_week_words.strip())
@@ -158,12 +164,9 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
 
-                # Clear text inputs & Auto-Lock PIN input
                 st.session_state.new_week_title_key = ""
                 st.session_state.new_week_words_key = ""
                 st.session_state.parent_pin_input = ""
-                
-                st.success(f"🎉 Saved '{new_week_title}' permanently!")
                 st.rerun()
             else:
                 st.warning("Please enter both a title and words before saving.")
@@ -178,7 +181,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 options=list(st.session_state.archived_lists.keys()),
                 key="delete_list_select"
             )
-            if st.button(f"❌ Delete '{list_to_delete}' & Auto-Lock", type="secondary"):
+            if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
                 del st.session_state.archived_lists[list_to_delete]
                 save_persistent_lists(st.session_state.archived_lists)
                 
@@ -191,7 +194,6 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                         st.session_state.raw_words = ""
                     st.session_state.cached_analysis = {}
 
-                # Auto-Lock PIN input on deletion
                 st.session_state.parent_pin_input = ""
                 st.rerun()
         else:
