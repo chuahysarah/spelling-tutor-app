@@ -5,10 +5,9 @@ import os
 import re
 from typing import Any
 
+import requests
 import streamlit as st
 from gtts import gTTS
-from google import genai
-from google.genai import types
 from pypinyin import Style, pinyin
 
 st.set_page_config(page_title="Weekly Spelling Practice", page_icon="✏️", layout="centered")
@@ -59,33 +58,28 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     if not api_key:
         return {}, "No API key configured."
     
-    os.environ["GEMINI_API_KEY"] = api_key
-    client = genai.Client(api_key=api_key)
     prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character, e.g. ['横','竖','撇','捺']; do not invent detailed paths). For Chinese phrases, give pinyin and character-specific stroke count/radical/structure/stroke-order in fields as short lists where helpful. Keep explanations age-appropriate. Unknown facts should be marked null or '不确定', not guessed. Items: """ + json.dumps(words, ensure_ascii=False)
     
-    response = None
-    err_msg = None
+    # Direct REST API call bypassing SDK model lookup errors
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
+    }
     
-    for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash"]:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
-            )
-            if response and response.text:
-                break
-        except Exception as e:
-            err_msg = str(e)
+    try:
+        resp = requests.post(url, json=payload, timeout=20)
+        res_data = resp.json()
+        
+        if resp.status_code != 200:
+            err_msg = res_data.get("error", {}).get("message", f"HTTP {resp.status_code}")
+            return {}, err_msg
 
-    if response and response.text:
-        try:
-            data = json.loads(response.text)
-            return (data if isinstance(data, dict) else {}), None
-        except Exception as parse_err:
-            return {}, f"JSON Parsing error: {parse_err}"
-            
-    return {}, err_msg or "Failed to connect to Gemini API."
+        text_content = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        data = json.loads(text_content)
+        return (data if isinstance(data, dict) else {}), None
+    except Exception as exc:
+        return {}, str(exc)
 
 
 @st.cache_data(show_spinner=False, max_entries=128)
