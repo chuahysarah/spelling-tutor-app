@@ -10,6 +10,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from gtts import gTTS
 from pypinyin import Style, pinyin
+from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Weekly Spelling Practice", page_icon="✏️", layout="centered")
 
@@ -56,7 +57,6 @@ def local_pinyin(text: str) -> str:
 
 
 def get_available_models(api_key: str) -> list[str]:
-    """Query Google to fetch valid model names for this API key."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
         resp = requests.get(url, timeout=10)
@@ -124,7 +124,6 @@ def audio_button(text: str, language: str, key: str) -> None:
 
 
 def render_hanzi_animations(word: str) -> None:
-    """Renders interactive Hanzi Writer stroke animations for Chinese characters."""
     chinese_chars = [char for char in word if re.search(r"[\u3400-\u9fff]", char)]
     if not chinese_chars:
         return
@@ -166,7 +165,6 @@ def render_hanzi_animations(word: str) -> None:
 
 
 def format_strokes(strokes_val: Any) -> str:
-    """Safely convert strokes output to formatted string."""
     if not strokes_val:
         return "—"
     if isinstance(strokes_val, list):
@@ -269,7 +267,7 @@ for index, word in enumerate(words):
 
 st.divider()
 st.subheader("3. Dictation quiz")
-st.write("Listen or read a hint, then type the spelling without looking at the answer.")
+st.write("Listen or read a hint, then write/type your answer without looking.")
 if st.session_state.quiz_index >= len(words):
     st.success(f"Great work! You finished the list. Score: {st.session_state.quiz_score} / {len(words)}")
     if st.button("Try again", type="primary"):
@@ -282,37 +280,80 @@ else:
     idx = st.session_state.quiz_index
     target = words[idx]
     info = analysis.get(target, {})
+    is_chinese = guess_language(target) == "Chinese"
+
     st.progress(idx / len(words), text=f"Word {idx + 1} of {len(words)} · Score {st.session_state.quiz_score}")
     with st.container(border=True):
         st.markdown(f"### Word {idx + 1}")
         q1, q2 = st.columns([1, 2])
         with q1:
             audio_button(target, str(info.get("language") or guess_language(target)), f"quiz-audio-{idx}")
-            if guess_language(target) == "Chinese":
+            if is_chinese:
                 st.caption(f"Pinyin: {info.get('pinyin') or local_pinyin(target)}")
         with q2:
             hint = info.get("meaning") or info.get("sentence") or "Listen carefully and remember your word."
             st.markdown(f"**Hint:** {hint}")
+            
         if st.button("Show another hint", key=f"hint-{idx}"):
-            st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if guess_language(target) == "Chinese" else "Think about the sounds and syllables."))
-        with st.form(f"quiz-form-{idx}"):
-            answer = st.text_input("Type your answer", key=f"answer-input-{idx}", disabled=st.session_state.quiz_checked)
-            check = st.form_submit_button("Check answer", type="primary", disabled=st.session_state.quiz_checked)
-        if check:
-            st.session_state.quiz_answer = answer.strip()
-            st.session_state.quiz_checked = True
-            if st.session_state.quiz_answer.casefold() == target.casefold():
-                st.session_state.quiz_score += 1
-            st.rerun()
-        if st.session_state.quiz_checked:
-            if st.session_state.quiz_answer.casefold() == target.casefold():
-                st.success("Correct! Well done!")
-            else:
-                st.error(f"Not quite. The answer is: **{target}**")
-            if st.button("Next word →" if idx + 1 < len(words) else "Finish quiz", type="primary", key=f"next-{idx}"):
-                st.session_state.quiz_index += 1
-                st.session_state.quiz_checked = False
-                st.session_state.quiz_answer = ""
+            st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Think about the sounds and syllables."))
+        
+        # Chinese Handwritten Writing Grid vs English Text Box
+        if is_chinese:
+            st.markdown("✍️ **Write the Chinese characters on the writing pad below:**")
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 255, 255, 0)",
+                stroke_width=5,
+                stroke_color="#1e293b",
+                background_color="#f8fafc",
+                height=220,
+                width=350,
+                drawing_mode="freedraw",
+                key=f"canvas-{idx}",
+            )
+            st.caption("Use a finger, mouse, or stylus to practice writing.")
+            
+            # For self-grading or adult reveal
+            if not st.session_state.quiz_checked:
+                c1, c2 = st.columns(2)
+                if c1.button("Reveal correct answer", type="primary", key=f"reveal-{idx}"):
+                    st.session_state.quiz_checked = True
+                    st.rerun()
+        else:
+            with st.form(f"quiz-form-{idx}"):
+                answer = st.text_input("Type your answer", key=f"answer-input-{idx}", disabled=st.session_state.quiz_checked)
+                check = st.form_submit_button("Check answer", type="primary", disabled=st.session_state.quiz_checked)
+            if check:
+                st.session_state.quiz_answer = answer.strip()
+                st.session_state.quiz_checked = True
+                if st.session_state.quiz_answer.casefold() == target.casefold():
+                    st.session_state.quiz_score += 1
                 st.rerun()
+
+        if st.session_state.quiz_checked:
+            if is_chinese:
+                st.info(f"Correct Character: **{target}**")
+                st.markdown("**Compare your strokes with the correct order:**")
+                render_hanzi_animations(target)
+                
+                col_yes, col_no = st.columns(2)
+                if col_yes.button("I wrote it correctly! ✅", key=f"self-correct-{idx}"):
+                    st.session_state.quiz_score += 1
+                    st.session_state.quiz_index += 1
+                    st.session_state.quiz_checked = False
+                    st.rerun()
+                if col_no.button("I need more practice ❌", key=f"self-wrong-{idx}"):
+                    st.session_state.quiz_index += 1
+                    st.session_state.quiz_checked = False
+                    st.rerun()
+            else:
+                if st.session_state.quiz_answer.casefold() == target.casefold():
+                    st.success("Correct! Well done!")
+                else:
+                    st.error(f"Not quite. The answer is: **{target}**")
+                if st.button("Next word →" if idx + 1 < len(words) else "Finish quiz", type="primary", key=f"next-{idx}"):
+                    st.session_state.quiz_index += 1
+                    st.session_state.quiz_checked = False
+                    st.session_state.quiz_answer = ""
+                    st.rerun()
 
 st.caption("Made for learning. Chinese stroke counts and radicals may vary by dictionary or curriculum; please confirm important details with a trusted class resource.")
