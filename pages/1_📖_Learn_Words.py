@@ -26,7 +26,7 @@ def get_api_key() -> str | None:
     return st.session_state.get("api_key") or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=7200, show_spinner=False)
 def get_available_models(api_key: str) -> list[str]:
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
@@ -66,7 +66,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     return {}, last_err or "Failed to connect to Gemini API."
 
 
-@st.cache_data(show_spinner=False, max_entries=256)
+@st.cache_data(show_spinner=False, max_entries=512, ttl=7200)
 def make_audio(text: str, lang: str) -> bytes:
     from io import BytesIO
     audio = BytesIO()
@@ -113,21 +113,30 @@ if not raw_words:
     st.stop()
 
 words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
-key = get_api_key()
-analysis = {}
 
-if key:
-    with st.spinner("✨ Fetching study notes & definitions from Gemini..."):
-        analysis, err = get_analysis(words, key)
-        if err:
-            st.warning(f"Could not load AI details: {err}")
-else:
-    st.info("💡 Add a Gemini API Key in the sidebar to generate meanings, example sentences, and phonics tips!")
+if "cached_analysis" not in st.session_state:
+    st.session_state.cached_analysis = {}
+
+key = get_api_key()
+
+# Fetch AI analysis only ONCE per list submission and store in session_state
+if key and not st.session_state.cached_analysis:
+    with st.spinner("✨ Preparing your study notes from Gemini..."):
+        data, err = get_analysis(words, key)
+        if not err:
+            st.session_state.cached_analysis = data
+        else:
+            st.warning(f"Note: Could not fetch extra AI details ({err}).")
+
+analysis = st.session_state.cached_analysis
+
+if not key:
+    st.info("💡 Add a Gemini API Key in the sidebar to generate definitions, example sentences, and phonics tips!")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
     lang = str(info.get("language") or guess_language(word))
-    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
+    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=False):
         audio_button(word, lang, f"audio-{word}")
         if lang == "English":
             st.write(f"🧩 **Syllables:** {info.get('syllables', '—')}")
