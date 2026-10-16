@@ -45,21 +45,41 @@ h3 { font-size: 1.8rem !important; color: #0f766e !important; }
 """, unsafe_allow_html=True)
 
 
-def fetch_available_lists() -> dict[str, str]:
-    if "archived_lists" in st.session_state and st.session_state.archived_lists:
-        return st.session_state.archived_lists
-
+def fetch_available_lists(child_name: str = "") -> dict[str, str]:
     if API_URL:
         try:
-            resp = requests.get(f"{API_URL}?action=get_lists", timeout=5)
+            params = {"action": "get_lists"}
+            if child_name:
+                params["child_name"] = child_name
+            resp = requests.get(API_URL, params=params, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict) and data:
-                    st.session_state.archived_lists = data
                     return data
         except Exception:
             pass
     return {}
+
+
+def fetch_child_profiles() -> list[str]:
+    if API_URL:
+        try:
+            resp = requests.get(API_URL, params={"action": "get_profiles"}, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+    return ["Alex", "Emma"]
+
+
+def sync_child_profiles(children: list[str]) -> None:
+    if API_URL:
+        try:
+            requests.post(API_URL, json={"action": "save_profiles", "children": children}, timeout=5)
+        except Exception as e:
+            st.error(f"Failed to sync profiles: {e}")
 
 
 def log_completed_quiz(child_name: str, week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
@@ -146,9 +166,11 @@ def rename_child_profile(old_name: str, new_name: str):
         if old_key in st.session_state:
             st.session_state[new_key] = st.session_state.pop(old_key)
 
+    sync_child_profiles(st.session_state.children)
+
 
 if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
+    st.session_state.children = fetch_child_profiles()
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
 
@@ -157,7 +179,7 @@ with st.sidebar:
     selected_child = st.selectbox(
         "Current Child:",
         options=st.session_state.children,
-        index=st.session_state.children.index(st.session_state.active_child)
+        index=st.session_state.children.index(st.session_state.active_child) if st.session_state.active_child in st.session_state.children else 0
     )
     if selected_child != st.session_state.active_child:
         st.session_state.active_child = selected_child
@@ -178,11 +200,11 @@ active_child = st.session_state.active_child
 
 st.title(f"🎯 Hi {active_child}! Dictation Quiz Time!")
 
-available_lists = fetch_available_lists()
+available_lists = fetch_available_lists(active_child)
 list_titles = list(available_lists.keys())
 
 if not list_titles:
-    st.warning("⚠️ No spelling lists available. Please create a list on the home page first!")
+    st.info(f"📋 No dictation lists assigned to {active_child} yet. Grown-ups can add lists on the home page!")
     st.stop()
 
 current_active = st.session_state.get(f"active_week_{active_child}", "")
@@ -267,7 +289,6 @@ with audio_col1:
 
 st.write("---")
 
-# Adaptive UI: Typing for English vs Handwriting Pad for Chinese
 if is_chinese:
     if st.session_state[f"quiz_checked_{active_child}"]:
         col_pad, col_ref = st.columns([1, 1], gap="medium")
@@ -335,7 +356,6 @@ if is_chinese:
                     st.rerun()
 
 else:
-    # English Word Typing & Automated Verification
     st.markdown("### 🔤 Type Your English Spelling Answer:")
     
     typed_ans = st.text_input(
