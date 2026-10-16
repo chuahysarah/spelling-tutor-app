@@ -22,7 +22,6 @@ DEFAULT_LISTS = {
 
 
 def fetch_available_lists() -> dict[str, str]:
-    """Fetches word lists from session state or Google Sheets API on direct cold start."""
     if "archived_lists" in st.session_state and st.session_state.archived_lists:
         return st.session_state.archived_lists
 
@@ -145,58 +144,70 @@ def render_hanzi_animations(word: str) -> None:
     components.html(html_code, height=num_rows * 110 + 15)
 
 
+# Sidebar Child Switcher
+if "children" not in st.session_state:
+    st.session_state.children = ["Alex", "Emma"]
+if "active_child" not in st.session_state:
+    st.session_state.active_child = st.session_state.children[0]
+
 with st.sidebar:
-    st.subheader("👨‍👩‍👧 For Grown-Ups")
-    api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value="")
-    if api_key_input:
-        st.session_state.api_key = api_key_input.strip()
+    st.subheader("👤 Practicing Learner")
+    selected_child = st.selectbox(
+        "Current Child:",
+        options=st.session_state.children,
+        index=st.session_state.children.index(st.session_state.active_child)
+    )
+    if selected_child != st.session_state.active_child:
+        st.session_state.active_child = selected_child
+        st.rerun()
 
-st.title("📖 Step 2: Let's Learn Our Words!")
+active_child = st.session_state.active_child
 
-# Ensure archived_lists and active_week are populated on cold start
+st.title(f"📖 Hi {active_child}! Let's Learn Our Words!")
+
 available_lists = fetch_available_lists()
 list_titles = list(available_lists.keys())
 
-current_active = st.session_state.get("active_week", "")
+current_active = st.session_state.get(f"active_week_{active_child}", "")
 if current_active not in list_titles and list_titles:
-    st.session_state.active_week = list_titles[0]
-    st.session_state.raw_words = available_lists[list_titles[0]]
+    st.session_state[f"active_week_{active_child}"] = list_titles[0]
+    st.session_state[f"raw_words_{active_child}"] = available_lists[list_titles[0]]
 
-default_idx = list_titles.index(st.session_state.active_week) if st.session_state.active_week in list_titles else 0
+default_idx = list_titles.index(st.session_state[f"active_week_{active_child}"]) if st.session_state[f"active_week_{active_child}"] in list_titles else 0
 
 selected_week = st.selectbox(
-    "📚 Active Practice List:",
+    f"📚 Select Weekly List for {active_child}:",
     options=list_titles,
     index=default_idx
 )
 
-if selected_week != st.session_state.get("active_week"):
-    st.session_state.active_week = selected_week
-    st.session_state.raw_words = available_lists[selected_week]
-    st.session_state.cached_analysis = {}
+if selected_week != st.session_state.get(f"active_week_{active_child}"):
+    st.session_state[f"active_week_{active_child}"] = selected_week
+    st.session_state[f"raw_words_{active_child}"] = available_lists[selected_week]
+    st.session_state[f"cached_analysis_{active_child}"] = {}
     st.rerun()
 
-raw_words = st.session_state.get("raw_words", "")
+raw_words = st.session_state.get(f"raw_words_{active_child}", "")
 words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
 
 if not words:
-    st.warning("⚠️ No words found in the selected list. Please select a different list above!")
+    st.warning("⚠️ No words found in the selected list. Please choose a different list above!")
     st.stop()
 
-if "cached_analysis" not in st.session_state:
-    st.session_state.cached_analysis = {}
+if f"cached_analysis_{active_child}" not in st.session_state:
+    st.session_state[f"cached_analysis_{active_child}"] = {}
 
 key = get_api_key()
 
-if key and not st.session_state.cached_analysis and words:
-    with st.spinner("✨ Fetching child-friendly meanings and memory tricks..."):
+if key and not st.session_state[f"cached_analysis_{active_child}"] and words:
+    with st.spinner(f"✨ Fetching child-friendly memory tricks for {active_child}..."):
         data, err = get_analysis(words, key)
         if not err and data:
-            st.session_state.cached_analysis = data
+            st.session_state[f"cached_analysis_{active_child}"] = data
         elif err:
             st.warning(f"Note: Unable to load AI details ({err}). Using standard word details.")
 
-analysis = st.session_state.cached_analysis
+analysis = st.session_state[f"cached_analysis_{active_child}"]
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
