@@ -15,34 +15,35 @@ st.set_page_config(page_title="Learn Words 📖", page_icon="📖", layout="cent
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+# Custom Memory Dict with 100% English Meanings, Chinese Sentences & Bilingual Tips
 CHINESE_MEMORY_DICT = {
     "事情": {
-        "meaning": "Matters, affairs, or things to do (事情/任务).",
+        "meaning": "Things to do, matters, affairs, or tasks.",
         "sentence": "今天我有一件很重要的事情要完成。",
         "tip": "💡 Memory Trick: '情' has '忄' (heart) on the left! It means things you care about with your heart!"
     },
     "学校": {
-        "meaning": "School — a fun place where kids learn and play!",
-        "sentence": "我和朋友一起去学校上课。",
+        "meaning": "School — a place where students learn knowledge and play with friends.",
+        "sentence": "我和朋友每天开心地上学校读书。",
         "tip": "💡 Memory Trick: Both '学' and '校' have '木' (wood) and roof radicals! Think of a wooden school building!"
     },
     "认真": {
-        "meaning": "Serious, attentive, and focused (认真/用心).",
-        "sentence": "小明认真地听老师讲课。",
+        "meaning": "Serious, attentive, and focused on doing something carefully.",
+        "sentence": "小明认真地听老师讲课和写作业。",
         "tip": "💡 Memory Trick: '认' has '讠' (words) — pay close attention to words when listening carefully!"
     },
     "爸爸": {
-        "meaning": "Dad / Father.",
+        "meaning": "Dad or father.",
         "sentence": "爸爸带我去公园骑脚踏车。",
         "tip": "💡 Memory Trick: Notice '父' (father radical) at the top of both characters!"
     },
     "妈妈": {
-        "meaning": "Mom / Mother.",
+        "meaning": "Mom or mother.",
         "sentence": "妈妈准备了美味的晚餐。",
         "tip": "💡 Memory Trick: Look at the left side! It has '女' (woman) radical because Mom is a lady!"
     },
     "学习": {
-        "meaning": "To learn and practice new knowledge (学习).",
+        "meaning": "To study, learn, and practice new knowledge or skills.",
         "sentence": "我们要努力学习新知识。",
         "tip": "💡 Memory Trick: '学' has a roof radical '宀' at the top — learning under the school roof!"
     }
@@ -139,18 +140,20 @@ def get_analysis(words: list[str], api_key: str) -> tuple[dict[str, dict[str, An
 For each item, provide:
 1. language: 'English' or 'Chinese'
 2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
-3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
-4. sentence: short, relatable daily life context sentence.
-5. spelling_tip: a super fun, child-friendly memory trick or radical/phonics hint! 
-   - For CHINESE: Explain character components & radicals! (e.g., "'情' has '忄' (heart) on the left side!", "'休' is a person '人' leaning against a tree '木'!").
-   - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
+3. meaning: simple, fun, child-friendly definition.
+   - FOR CHINESE WORDS: Write the definition 100% in simple English so primary school kids easily understand the word!
+   - FOR ENGLISH WORDS: Write definition in simple English.
+4. sentence: short, relatable daily life context sentence (written 100% in Simplified Chinese for Chinese words, English for English words).
+5. spelling_tip: a super fun, child-friendly memory trick! 
+   - For CHINESE: Use a playful mix of English and Chinese explaining radicals and components! (e.g., "'情' has '忄' (heart) on the left side!", "'休' is a person '人' leaning against a tree '木'!").
+   - For ENGLISH: Use fun mnemonics or phonics rules in English.
 6. pinyin: Chinese tone-marked pinyin or empty for English.
 
 Items: """ + json.dumps(words, ensure_ascii=False)
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}], 
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
     }
     
     clean_token = api_key.strip().strip("'").strip('"')
