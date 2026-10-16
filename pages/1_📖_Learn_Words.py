@@ -70,13 +70,14 @@ h3 { font-size: 1.7rem !important; color: #0f766e !important; }
 """, unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_available_lists(child_name: str = "") -> dict[str, str]:
     if API_URL:
         try:
             params = {"action": "get_lists"}
             if child_name:
                 params["child_name"] = child_name
-            resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=8)
+            resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict):
@@ -86,6 +87,7 @@ def fetch_available_lists(child_name: str = "") -> dict[str, str]:
     return {}
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_child_profiles() -> list[str]:
     if API_URL:
         try:
@@ -103,6 +105,7 @@ def sync_child_profiles(children: list[str]) -> None:
     if API_URL:
         try:
             requests.post(API_URL, json={"action": "save_profiles", "children": children}, timeout=5)
+            st.cache_data.clear()
         except Exception as e:
             st.error(f"Failed to sync profiles: {e}")
 
@@ -154,7 +157,7 @@ Items: """ + json.dumps(words, ensure_ascii=False)
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={clean_token}"
 
     try:
-        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=8)
         if resp.status_code == 200:
             raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
             match = re.search(r'\{.*\}', raw_text, re.DOTALL)
