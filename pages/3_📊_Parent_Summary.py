@@ -39,11 +39,25 @@ def fetch_practice_history() -> list[dict]:
     return []
 
 
-st.subheader("🌟 Current Session Overview")
+if "children" not in st.session_state:
+    st.session_state.children = ["Alex", "Emma"]
+if "active_child" not in st.session_state:
+    st.session_state.active_child = st.session_state.children[0]
+
+st.subheader("👤 Select Child Profile")
+view_child = st.selectbox(
+    "Showing active session details for:",
+    options=st.session_state.children,
+    index=st.session_state.children.index(st.session_state.active_child)
+)
+
+st.divider()
+
+st.subheader(f"🌟 Session Overview for {view_child}")
 col1, col2 = st.columns(2)
 
-mastered = st.session_state.get("mastered_words", set())
-unfamiliar = st.session_state.get("unfamiliar_words", set())
+mastered = st.session_state.get(f"mastered_words_{view_child}", set())
+unfamiliar = st.session_state.get(f"unfamiliar_words_{view_child}", set())
 
 with col1:
     st.metric(label="✅ Mastered Words (Session)", value=len(mastered))
@@ -61,18 +75,30 @@ with col2:
 
 st.divider()
 
-st.subheader("📜 All Past Practice Attempts")
+st.subheader("📜 All Recorded History Logs")
 
 history = fetch_practice_history()
 
 if history:
-    for attempt in reversed(history):
-        with st.expander(f"🗓️ {attempt.get('timestamp', 'N/A')} — {attempt.get('week_title', 'Spelling Practice')} (Score: {attempt.get('score')}/{attempt.get('total_words')})"):
-            st.write(f"🎯 **Score:** {attempt.get('score')} / {attempt.get('total_words')}")
-            st.write(f"✅ **Mastered Words:** {attempt.get('mastered', 'None')}")
-            st.write(f"💡 **Needs Practice Words:** {attempt.get('unfamiliar', 'None')}")
+    filtered_history = [
+        item for item in history 
+        if item.get('child_name', '').casefold() == view_child.casefold() or not item.get('child_name')
+    ]
+    
+    if filtered_history:
+        for attempt in reversed(filtered_history):
+            title = attempt.get('week_title', 'Spelling Practice')
+            time_str = attempt.get('timestamp', 'N/A')
+            score = attempt.get('score', 0)
+            total = attempt.get('total_words', 0)
+            with st.expander(f"🗓️ {time_str} — {title} (Score: {score}/{total})"):
+                st.write(f"🎯 **Score:** {score} / {total}")
+                st.write(f"✅ **Mastered Words:** {attempt.get('mastered', 'None')}")
+                st.write(f"💡 **Needs Practice Words:** {attempt.get('unfamiliar', 'None')}")
+    else:
+        st.info(f"No history records found for {view_child} yet.")
 else:
-    st.info("No past practice logs found in database. Complete a quiz to start building practice history!")
+    st.info("No past practice logs found in database.")
 
 if st.button("🔒 Lock Dashboard", type="secondary"):
     st.session_state.parent_dashboard_unlocked = False
