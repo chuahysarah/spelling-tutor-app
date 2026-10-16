@@ -54,13 +54,14 @@ h3 { font-size: 1.7rem !important; color: #0f766e !important; }
 """, unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_remote_lists(child_name: str = "") -> dict[str, str]:
     if API_URL:
         try:
             params = {"action": "get_lists"}
             if child_name:
                 params["child_name"] = child_name
-            resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=8)
+            resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict):
@@ -76,8 +77,9 @@ def save_remote_list(title: str, words: str, child_name: str) -> bool:
             resp = requests.post(
                 API_URL, 
                 json={"action": "save", "title": title, "words": words, "child_name": child_name}, 
-                timeout=8
+                timeout=5
             )
+            st.cache_data.clear()
             return resp.status_code == 200
         except Exception as e:
             st.error(f"Failed to sync save to database: {e}")
@@ -90,14 +92,16 @@ def delete_remote_list(title: str, child_name: str) -> bool:
             resp = requests.post(
                 API_URL, 
                 json={"action": "delete", "title": title, "child_name": child_name}, 
-                timeout=8
+                timeout=5
             )
+            st.cache_data.clear()
             return resp.status_code == 200
         except Exception as e:
             st.error(f"Failed to sync delete to database: {e}")
     return False
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_child_profiles() -> list[str]:
     if API_URL:
         try:
@@ -115,6 +119,7 @@ def sync_child_profiles(children: list[str]) -> None:
     if API_URL:
         try:
             requests.post(API_URL, json={"action": "save_profiles", "children": children}, timeout=5)
+            st.cache_data.clear()
         except Exception as e:
             st.error(f"Failed to sync learner profiles: {e}")
 
