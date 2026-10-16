@@ -12,20 +12,78 @@ from gtts import gTTS
 from pypinyin import Style, pinyin
 from streamlit_drawable_canvas import st_canvas
 
-st.set_page_config(page_title="Weekly Spelling Practice", page_icon="✏️", layout="centered")
+st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
+# Playful, child-friendly custom styling
 st.markdown("""
 <style>
-.block-container {max-width: 900px; padding-top: 2rem; padding-bottom: 3rem;}
-.hero {padding: 1.35rem 1.5rem; border-radius: 18px; background: linear-gradient(120deg,#eff6ff,#f0fdf4); margin-bottom: 1rem;}
-.hero h1 {margin: 0 0 .35rem 0; color: #17365d;}
-.word-card {padding: 1rem 1.2rem; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; margin: .5rem 0;}
-.small-note {color: #64748b; font-size: .9rem;}
-</style>
-<div class="hero"><h1>✏️ Weekly Spelling Practice</h1><div>Listen, learn, and practise your English and Chinese words.</div></div>
-""", unsafe_allow_html=True)
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
 
-st.caption("A friendly practice space for 听写 / 默写. Add your weekly list, explore each word, then try a quiz!")
+html, body, [class*="css"] {
+    font-family: 'Fredoka', cursive, sans-serif;
+}
+
+.block-container {
+    max-width: 900px; 
+    padding-top: 1.5rem; 
+    padding-bottom: 3rem;
+}
+
+.hero {
+    padding: 1.5rem 1.8rem; 
+    border-radius: 24px; 
+    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
+    border: 3px solid #fde047;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    margin-bottom: 1.25rem;
+    text-align: center;
+}
+
+.hero h1 {
+    margin: 0 0 .35rem 0; 
+    color: #0284c7;
+    font-size: 2.2rem;
+    font-weight: 700;
+}
+
+.hero-subtitle {
+    color: #475569;
+    font-size: 1.1rem;
+}
+
+.word-card {
+    padding: 1.2rem 1.5rem; 
+    border: 2px solid #bae6fd; 
+    border-radius: 20px; 
+    background: #ffffff; 
+    margin: .6rem 0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
+}
+
+.stButton>button {
+    border-radius: 16px !important;
+    font-weight: 600 !important;
+    font-size: 1.05rem !important;
+    padding: 0.5rem 1.2rem !important;
+    transition: transform 0.1s ease;
+}
+
+.stButton>button:active {
+    transform: scale(0.97);
+}
+
+div[data-testid="stExpander"] {
+    border-radius: 18px !important;
+    border: 2px solid #e2e8f0 !important;
+    background-color: #ffffff;
+    margin-bottom: 0.75rem;
+}
+</style>
+<div class="hero">
+    <h1>🌟 Magic Spelling Practice! ✏️</h1>
+    <div class="hero-subtitle">Listen, practice writing, and become a spelling star! 听写 / 默写 小助手</div>
+</div>
+""", unsafe_allow_html=True)
 
 
 def get_api_key() -> str | None:
@@ -120,11 +178,10 @@ def audio_button(text: str, language: str, key: str) -> None:
     try:
         st.audio(make_audio(text, lang), format="audio/mp3")
     except Exception as exc:
-        st.info(f"Audio could not be loaded right now. Please check your internet connection. ({type(exc).__name__})")
+        st.info(f"Audio is taking a short break! ({type(exc).__name__})")
 
 
 def render_hanzi_animations(word: str) -> None:
-    """Renders interactive Hanzi Writer stroke animations for all Chinese characters in a sentence or phrase."""
     chinese_chars = [char for char in word if re.search(r"[\u3400-\u9fff]", char)]
     if not chinese_chars:
         return
@@ -134,22 +191,21 @@ def render_hanzi_animations(word: str) -> None:
     
     for i, char in enumerate(chinese_chars):
         div_id = f"target-{i}-{ord(char)}"
-        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fafafa;"></div>'
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 6px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);"></div>'
         scripts += f"""
         HanziWriter.create('{div_id}', '{char}', {{
-            width: 100,
-            height: 100,
-            padding: 5,
+            width: 105,
+            height: 105,
+            padding: 6,
             showOutline: true,
             strokeAnimationSpeed: 1,
             delayBetweenStrokes: 150
         }}).loopCharacterAnimation();
         """
 
-    # Dynamically calculate container height based on total characters (rows of 5)
     chars_per_row = 5
     num_rows = (len(chinese_chars) + chars_per_row - 1) // chars_per_row
-    container_height = num_rows * 120 + 20
+    container_height = num_rows * 125 + 20
 
     html_code = f"""
     <!DOCTYPE html>
@@ -158,7 +214,7 @@ def render_hanzi_animations(word: str) -> None:
       <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
     </head>
     <body style="margin: 0; padding: 0; background: transparent;">
-      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
         {targets}
       </div>
       <script>
@@ -186,37 +242,36 @@ def format_strokes(strokes_val: Any) -> str:
 
 def show_analysis(word: str, info: dict[str, Any]) -> None:
     language = str(info.get("language") or guess_language(word))
-    st.markdown(f'<div class="word-card"><h3 style="margin:0">{word}</h3></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="word-card"><h3 style="margin:0; color:#0369a1;">✨ {word}</h3></div>', unsafe_allow_html=True)
     audio_button(word, language, f"audio-{word}")
     
     if language == "English":
         cols = st.columns(2)
-        cols[0].markdown(f"**Syllables:** {info.get('syllables', '—')}")
-        cols[1].markdown(f"**Meaning:** {info.get('meaning', '—')}")
-        st.markdown(f"**Example:** {info.get('sentence', '—')}")
-        st.markdown(f"**Spelling tip:** {info.get('spelling_tip', '—')}")
+        cols[0].markdown(f"🧩 **Syllables:** {info.get('syllables', '—')}")
+        cols[1].markdown(f"💡 **Meaning:** {info.get('meaning', '—')}")
+        st.markdown(f"💬 **Example:** {info.get('sentence', '—')}")
+        st.markdown(f"⭐ **Spelling Tip:** {info.get('spelling_tip', '—')}")
     else:
         py = str(info.get("pinyin") or local_pinyin(word))
-        st.markdown(f"**拼音 Pinyin:** {py}")
+        st.markdown(f"🗣️ **拼音 Pinyin:** `{py}`")
         if py:
-            st.caption("Listen to the Chinese word and its pronunciation:")
+            st.caption("Press play to listen to how it sounds!")
             audio_button(py, "Chinese", f"pinyin-{word}")
             
-        st.markdown("**笔顺动画 Visual Stroke Order:**")
+        st.markdown("✍️ **Stroke Order Animation (动画笔顺):**")
         render_hanzi_animations(word)
 
-        st.markdown(f"**意思 Meaning:** {info.get('meaning', '—')}")
-        st.markdown(f"**例句 Example:** {info.get('sentence', '—')}")
-        st.markdown(f"**总笔画 Stroke count:** {info.get('stroke_count') or 'Please verify with your class dictionary'}")
-        st.markdown(f"**部首 Radical:** {info.get('radical') or 'Please verify with your class dictionary'}")
-        st.markdown(f"**结构 Structure:** {info.get('structure') or '—'}")
+        st.markdown(f"💡 **意思 Meaning:** {info.get('meaning', '—')}")
+        st.markdown(f"💬 **例句 Example:** {info.get('sentence', '—')}")
+        st.markdown(f"🔢 **总笔画 Stroke count:** {info.get('stroke_count') or 'Please verify with your class dictionary'}")
+        st.markdown(f"🌱 **部首 Radical:** {info.get('radical') or 'Please verify with your class dictionary'}")
+        st.markdown(f"🏗️ **结构 Structure:** {info.get('structure') or '—'}")
         
         strokes = info.get("strokes")
         if strokes:
-            st.markdown(f"**笔顺名称 Stroke names:** {format_strokes(strokes)}")
+            st.markdown(f"📝 **笔顺名称 Stroke names:** {format_strokes(strokes)}")
             
-        st.markdown(f"**记忆小贴士 Tip:** {info.get('spelling_tip', '—')}")
-        st.caption("Stroke details are AI-generated study hints; check your textbook or teacher for required stroke order.")
+        st.markdown(f"⭐ **记忆小贴士 Tip:** {info.get('spelling_tip', '—')}")
 
 
 if "raw_words" not in st.session_state:
@@ -231,17 +286,18 @@ if "quiz_answer" not in st.session_state:
     st.session_state.quiz_answer = ""
 
 with st.sidebar:
-    st.subheader("For grown-ups")
-    st.markdown("Add a Gemini API key for word-by-word explanations. Without one, Chinese pinyin still works, but detailed explanations are limited.")
-    api_key = st.text_input("Google Gemini API key (optional)", type="password", value=get_api_key() or "", help="Stored only for this session unless configured in Streamlit secrets.")
-    st.caption("Audio uses gTTS and needs an internet connection.")
+    st.subheader("👨‍👩‍👧 For Grown-Ups")
+    st.markdown("Add a Gemini API key for extra word tips and meanings. Without a key, Chinese audio & local pinyin still work great!")
+    api_key = st.text_input("Google Gemini API Key (optional)", type="password", value=get_api_key() or "")
+    st.caption("🔊 Audio uses gTTS and needs an internet connection.")
     st.divider()
-    st.markdown("**Tip:** One word or phrase per line. English, 中文, or a mix are welcome.")
+    st.markdown("💡 **Tip:** Type one word or phrase per line. Mix English & Chinese freely!")
 
-st.subheader("1. Add this week's words")
+st.subheader("📝 Step 1: Add your weekly words!")
 with st.form("word_list_form"):
-    raw = st.text_area("Your spelling list", value=st.session_state.raw_words, height=150, placeholder="beautiful\nfriend\n学校\n认真", label_visibility="collapsed")
-    submitted = st.form_submit_button("Save my list", type="primary")
+    raw = st.text_area("Type your list here:", value=st.session_state.raw_words, height=140, placeholder="beautiful\nfriend\n学校\n认真", label_visibility="collapsed")
+    submitted = st.form_submit_button("🚀 Start My Practice!", type="primary")
+
 if submitted:
     st.session_state.raw_words = raw
     st.session_state.quiz_index = 0
@@ -251,7 +307,7 @@ if submitted:
 
 words = normalize_words(st.session_state.raw_words)
 if not words:
-    st.info("Enter a few words above to get started.")
+    st.info("👆 Enter a few words above and press 'Start My Practice' to begin!")
     st.stop()
 
 key = api_key.strip() if api_key else get_api_key()
@@ -259,24 +315,26 @@ analysis = {}
 error_detail = None
 
 if key:
-    with st.spinner("Preparing your word notes…"):
+    with st.spinner("✨ Preparing your magic study notes..."):
         analysis, error_detail = get_analysis(words, key)
 
 if error_detail and key:
-    st.warning(f"Gemini analysis is currently limited. Details: `{error_detail}`. Chinese pinyin is still provided locally.")
+    st.warning(f"Note: Full AI notes are limited right now ({error_detail}). Chinese pinyin is still provided!")
 
-st.subheader("2. Learn about each word")
+st.subheader("📖 Step 2: Let's learn our words!")
 for index, word in enumerate(words):
     info = analysis.get(word, {})
-    with st.expander(f"{index + 1}. {word} · {guess_language(word)}", expanded=False):
+    with st.expander(f"Word {index + 1}:  {word}  ({guess_language(word)})", expanded=False):
         show_analysis(word, info)
 
 st.divider()
-st.subheader("3. Dictation quiz")
-st.write("Listen or read a hint, then write/type your answer without looking.")
+st.subheader("🎯 Step 3: Dictation Time!")
+st.write("Listen to the pronunciation or hint, then write or type your answer!")
+
 if st.session_state.quiz_index >= len(words):
-    st.success(f"Great work! You finished the list. Score: {st.session_state.quiz_score} / {len(words)}")
-    if st.button("Try again", type="primary"):
+    st.balloons()
+    st.success(f"🎉 Super job! You finished all your words! Final Score: {st.session_state.quiz_score} / {len(words)}")
+    if st.button("🔄 Try Again!", type="primary"):
         st.session_state.quiz_index = 0
         st.session_state.quiz_score = 0
         st.session_state.quiz_checked = False
@@ -288,46 +346,47 @@ else:
     info = analysis.get(target, {})
     is_chinese = guess_language(target) == "Chinese"
 
-    st.progress(idx / len(words), text=f"Word {idx + 1} of {len(words)} · Score {st.session_state.quiz_score}")
+    st.progress((idx) / len(words), text=f"⭐ Progress: Word {idx + 1} of {len(words)} | Score: {st.session_state.quiz_score}")
+    
     with st.container(border=True):
-        st.markdown(f"### Word {idx + 1}")
+        st.markdown(f"### ❓ Question {idx + 1}")
         q1, q2 = st.columns([1, 2])
         with q1:
             audio_button(target, str(info.get("language") or guess_language(target)), f"quiz-audio-{idx}")
             if is_chinese:
                 st.caption(f"Pinyin: {info.get('pinyin') or local_pinyin(target)}")
         with q2:
-            hint = info.get("meaning") or info.get("sentence") or "Listen carefully and remember your word."
-            st.markdown(f"**Hint:** {hint}")
+            hint = info.get("meaning") or info.get("sentence") or "Listen closely to the audio!"
+            st.markdown(f"💡 **Hint:** {hint}")
             
-        if st.button("Show another hint", key=f"hint-{idx}"):
-            st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Think about the sounds and syllables."))
+        if st.button("🔎 Show Extra Hint", key=f"hint-{idx}"):
+            st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Sound out the letters!"))
         
-        # Chinese Handwritten Pad
+        # Child-friendly Canvas Pad for Chinese vs Text Box for English
         if is_chinese:
-            st.markdown("✍️ **Write the Chinese characters on the writing pad below:**")
+            st.markdown("✍️ **Write your characters on the magic pad:**")
             
             st_canvas(
                 fill_color="rgba(255, 255, 255, 0)",
-                stroke_width=4,
-                stroke_color="#0f172a",
+                stroke_width=5,
+                stroke_color="#0284c7",
                 background_color="#f8fafc",
-                height=200,
-                width=320,
+                height=220,
+                width=340,
                 drawing_mode="freedraw",
                 update_streamlit=False,
                 key=f"canvas-{idx}",
             )
-            st.caption("Use your finger or stylus to write on the grid.")
+            st.caption("👆 Use your finger or stylus to draw!")
             
             if not st.session_state.quiz_checked:
-                if st.button("Check my handwriting 👁️", type="primary", key=f"reveal-{idx}"):
+                if st.button("👁️ Check My Handwriting", type="primary", key=f"reveal-{idx}"):
                     st.session_state.quiz_checked = True
                     st.rerun()
         else:
             with st.form(f"quiz-form-{idx}"):
-                answer = st.text_input("Type your answer", key=f"answer-input-{idx}", disabled=st.session_state.quiz_checked)
-                check = st.form_submit_button("Check answer", type="primary", disabled=st.session_state.quiz_checked)
+                answer = st.text_input("Type your answer here:", key=f"answer-input-{idx}", disabled=st.session_state.quiz_checked)
+                check = st.form_submit_button("Check Answer ⭐", type="primary", disabled=st.session_state.quiz_checked)
             if check:
                 st.session_state.quiz_answer = answer.strip()
                 st.session_state.quiz_checked = True
@@ -337,29 +396,29 @@ else:
 
         if st.session_state.quiz_checked:
             if is_chinese:
-                st.info(f"Correct Character: **{target}**")
-                st.markdown("**Compare your strokes with the correct order:**")
+                st.info(f"✨ Correct Character: **{target}**")
+                st.markdown("**Compare your strokes with the animation:**")
                 render_hanzi_animations(target)
                 
                 col_yes, col_no = st.columns(2)
-                if col_yes.button("I wrote it correctly! ✅", key=f"self-correct-{idx}"):
+                if col_yes.button("I got it right! ✅", key=f"self-correct-{idx}"):
                     st.session_state.quiz_score += 1
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.rerun()
-                if col_no.button("I need more practice ❌", key=f"self-wrong-{idx}"):
+                if col_no.button("Need more practice ❌", key=f"self-wrong-{idx}"):
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.rerun()
             else:
                 if st.session_state.quiz_answer.casefold() == target.casefold():
-                    st.success("Correct! Well done!")
+                    st.success("🎉 Correct! Fantastic job!")
                 else:
-                    st.error(f"Not quite. The answer is: **{target}**")
-                if st.button("Next word →" if idx + 1 < len(words) else "Finish quiz", type="primary", key=f"next-{idx}"):
+                    st.error(f"Almost! The correct spelling is: **{target}**")
+                if st.button("Next Word ➡️" if idx + 1 < len(words) else "Finish Quiz 🏆", type="primary", key=f"next-{idx}"):
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.session_state.quiz_answer = ""
                     st.rerun()
 
-st.caption("Made for learning. Chinese stroke counts and radicals may vary by dictionary or curriculum; please confirm important details with a trusted class resource.")
+st.caption("🌈 Made with love for learning! Check official school textbooks for curriculum-specific stroke rules.")
