@@ -400,10 +400,13 @@ for index, word in enumerate(words):
             candidate_meaning = info.get("meaning")
             if is_valid_english_meaning(candidate_meaning):
                 meaning = str(candidate_meaning).strip()
+                meaning_available = True
             elif is_valid_english_meaning(preset.get("meaning")):
                 meaning = str(preset["meaning"]).strip()
+                meaning_available = True
             else:
-                meaning = "The English meaning for this item is not available yet. Please ask a grown-up to refresh the word details."
+                meaning = ""
+                meaning_available = False
 
             candidate_sentence = info.get("sentence")
             if is_valid_chinese_example(candidate_sentence, word):
@@ -419,11 +422,13 @@ for index, word in enumerate(words):
             st.write(f"🗣️ **Pinyin:** `{py}`")
             st.write("✍️ **Stroke Order Animation:**")
             render_hanzi_animations(word)
-            st.write(f"💡 **Meaning:** {meaning}")
+            if meaning_available:
+                st.write(f"💡 **Meaning:** {meaning}")
             if sentence:
                 st.write(f"💬 **Example:** {sentence}")
             else:
                 st.caption("A natural example sentence could not be generated. Ask a grown-up to refresh the word details.")
             if sentence:
                 audio_button(sentence, "Chinese", f"sentence-{word}")
-            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
+            if meaning_available:
+                st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
