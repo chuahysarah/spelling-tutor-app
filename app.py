@@ -46,9 +46,10 @@ if "unfamiliar_words" not in st.session_state:
 
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
-    api_key = st.text_input("Google Gemini API Key (optional)", type="password", value=st.session_state.get("api_key", ""))
-    if api_key:
-        st.session_state.api_key = api_key.strip()
+    # Store API Key directly into Session State so all pages access it
+    api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value=st.session_state.get("api_key", ""))
+    if api_key_input:
+        st.session_state.api_key = api_key_input.strip()
 
 st.subheader("📝 Step 1: Add your weekly words!")
 with st.form("word_list_form"):
