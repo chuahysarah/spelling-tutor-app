@@ -37,36 +37,73 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
+# Initialize Persistent Weekly Archive in Session State
+if "archived_lists" not in st.session_state:
+    st.session_state.archived_lists = {
+        "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
+        "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
+    }
+
+if "active_week" not in st.session_state:
+    st.session_state.active_week = "Week 1: School & Friends"
+
 if "raw_words" not in st.session_state:
-    st.session_state.raw_words = ""
+    st.session_state.raw_words = st.session_state.archived_lists[st.session_state.active_week]
+
 if "mastered_words" not in st.session_state:
     st.session_state.mastered_words = set()
 if "unfamiliar_words" not in st.session_state:
     st.session_state.unfamiliar_words = set()
 
+# Sidebar: Parent API Key Configuration
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
     api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value=st.session_state.get("api_key", ""))
     if api_key_input:
         st.session_state.api_key = api_key_input.strip()
 
-st.subheader("📝 Step 1: Add your weekly words!")
-with st.form("word_list_form"):
-    raw = st.text_area("Type your list here (one word per line):", value=st.session_state.raw_words, height=160, placeholder="beautiful\nfriend\n学校\n认真")
-    submitted = st.form_submit_button("🚀 Save Word List", type="primary")
+# Child Section: Select Active Weekly List
+st.subheader("🎒 Step 1: Select Your Week!")
+selected_week = st.selectbox(
+    "Choose which week you want to practice today:",
+    options=list(st.session_state.archived_lists.keys()),
+    index=list(st.session_state.archived_lists.keys()).index(st.session_state.active_week)
+)
 
-if submitted:
-    st.session_state.raw_words = raw
-    st.session_state.quiz_words = normalize_words(raw)
+# Load selected weekly list into active practice session
+if selected_week != st.session_state.active_week:
+    st.session_state.active_week = selected_week
+    st.session_state.raw_words = st.session_state.archived_lists[selected_week]
+    st.session_state.quiz_words = normalize_words(st.session_state.raw_words)
     st.session_state.quiz_index = 0
     st.session_state.quiz_score = 0
     st.session_state.quiz_checked = False
-    st.session_state.mastered_words = set()
-    st.session_state.unfamiliar_words = set()
-    # Reset cached AI analysis on new list submission
     st.session_state.cached_analysis = {}
-    st.success("🎉 Words saved! Select '📖 Learn Words' or '🎯 Dictation Quiz' from the sidebar menu to begin!")
+    st.rerun()
+
+st.info(f"📍 Active Practice List: **{st.session_state.active_week}**")
+
+# Parent Section: Pre-populate or Add New Weekly Lists
+with st.expander("🛠️ Parent Area: Add or Edit Weekly Spelling Lists", expanded=False):
+    st.write("Pre-populate weekly lists here so your child can easily pick their week above!")
+    new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
+    new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
+    
+    if st.button("💾 Save to Weekly Archive", type="primary"):
+        if new_week_title.strip() and new_week_words.strip():
+            st.session_state.archived_lists[new_week_title.strip()] = new_week_words.strip()
+            st.session_state.active_week = new_week_title.strip()
+            st.session_state.raw_words = new_week_words.strip()
+            st.session_state.quiz_words = normalize_words(new_week_words.strip())
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_checked = False
+            st.session_state.cached_analysis = {}
+            st.success(f"🎉 Saved '{new_week_title}' to the archive and set as active list!")
+            st.rerun()
+        else:
+            st.warning("Please provide both a title and word list before saving.")
 
 words = normalize_words(st.session_state.raw_words)
 if words:
-    st.info(f"✨ Currently practicing {len(words)} word(s). Use the sidebar navigation on the left to start!")
+    st.success(f"✨ Currently loaded **{len(words)} word(s)** for {st.session_state.active_week}. Select '📖 Learn Words' or '🎯 Dictation Quiz' in the sidebar to begin!")
