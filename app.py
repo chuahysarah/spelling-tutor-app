@@ -59,10 +59,13 @@ h3 { font-size: 1.7rem !important; color: #0f766e !important; }
 """, unsafe_allow_html=True)
 
 
-def fetch_remote_lists() -> dict[str, str]:
+def fetch_remote_lists(child_name: str = "") -> dict[str, str]:
     if API_URL:
         try:
-            resp = requests.get(API_URL, params={"action": "get_lists"}, allow_redirects=True, timeout=8)
+            params = {"action": "get_lists"}
+            if child_name:
+                params["child_name"] = child_name
+            resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict) and data:
@@ -72,18 +75,18 @@ def fetch_remote_lists() -> dict[str, str]:
     return DEFAULT_LISTS
 
 
-def save_remote_list(title: str, words: str) -> None:
+def save_remote_list(title: str, words: str, child_name: str) -> None:
     if API_URL:
         try:
-            requests.post(API_URL, json={"action": "save", "title": title, "words": words}, timeout=5)
+            requests.post(API_URL, json={"action": "save", "title": title, "words": words, "child_name": child_name}, timeout=5)
         except Exception as e:
             st.error(f"Failed to sync save to database: {e}")
 
 
-def delete_remote_list(title: str) -> None:
+def delete_remote_list(title: str, child_name: str) -> None:
     if API_URL:
         try:
-            requests.post(API_URL, json={"action": "delete", "title": title}, timeout=5)
+            requests.post(API_URL, json={"action": "delete", "title": title, "child_name": child_name}, timeout=5)
         except Exception as e:
             st.error(f"Failed to sync delete to database: {e}")
 
@@ -109,17 +112,17 @@ def sync_child_profiles(children: list[str]) -> None:
             st.error(f"Failed to sync learner profiles: {e}")
 
 
-fetched = fetch_remote_lists()
-if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
-    st.session_state.archived_lists = fetched
-else:
-    st.session_state.archived_lists.update(fetched)
-
 if "children" not in st.session_state:
     st.session_state.children = fetch_child_profiles()
 
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
+
+active_child = st.session_state.active_child
+
+fetched = fetch_remote_lists(active_child)
+if f"archived_lists_{active_child}" not in st.session_state or not st.session_state[f"archived_lists_{active_child}"]:
+    st.session_state[f"archived_lists_{active_child}"] = fetched
 
 if "parent_unlocked" not in st.session_state:
     st.session_state.parent_unlocked = False
@@ -134,7 +137,7 @@ def rename_child_profile(old_name: str, new_name: str):
     
     st.session_state.active_child = new_name
 
-    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words", "archived_lists"]:
         old_key = f"{key_prefix}_{old_name}"
         new_key = f"{key_prefix}_{new_name}"
         if old_key in st.session_state:
@@ -235,6 +238,12 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
         st.write("---")
         
         st.write("### ➕ Add or Update List")
+        target_child_for_list = st.selectbox(
+            "Assign List To:",
+            options=["All Learners"] + st.session_state.children,
+            index=1 if active_child in st.session_state.children else 0,
+            key="target_child_list_select"
+        )
         new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 5: Animals & Weather")
         new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n事情\n生日")
         
@@ -242,10 +251,9 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
             title_clean = new_week_title.strip()
             words_clean = new_week_words.strip()
             if title_clean and words_clean:
-                st.session_state.archived_lists[title_clean] = words_clean
-                save_remote_list(title_clean, words_clean)
+                save_remote_list(title_clean, words_clean, target_child_for_list)
                 st.session_state.parent_unlocked = False
-                st.success(f"Saved '{title_clean}' successfully!")
+                st.success(f"Saved '{title_clean}' for {target_child_for_list} successfully!")
                 st.rerun()
             else:
                 st.warning("Please enter both a title and words before saving.")
@@ -253,16 +261,17 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
         st.divider()
 
         st.write("### 🗑️ Delete an Existing List")
-        if st.session_state.archived_lists:
+        child_lists = fetch_remote_lists(active_child)
+        if child_lists:
             list_to_delete = st.selectbox(
-                "Select list to delete:",
-                options=list(st.session_state.archived_lists.keys()),
+                f"Select list to delete for {active_child}:",
+                options=list(child_lists.keys()),
                 key="delete_list_select"
             )
             if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
-                del st.session_state.archived_lists[list_to_delete]
-                delete_remote_list(list_to_delete)
+                delete_remote_list(list_to_delete, active_child)
                 st.session_state.parent_unlocked = False
+                st.success(f"Deleted '{list_to_delete}'!")
                 st.rerun()
         else:
-            st.caption("No archived lists to delete.")
+            st.caption("No archived lists to delete for this child.")
