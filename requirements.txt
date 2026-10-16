@@ -3,3 +3,4 @@ google-genai
 requests
 gTTS
 pypinyin
+streamlit-drawable-canvas
