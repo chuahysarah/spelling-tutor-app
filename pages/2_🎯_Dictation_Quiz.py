@@ -123,12 +123,11 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
     except Exception:
         pass
 
-    # Fallback stroke detection when token type error occurs
+    # Built-in handwriting stroke fallback
     if isinstance(image_data, np.ndarray) and image_data.size > 0:
-        # Check non-white pixels drawn on canvas
         has_drawing = np.sum(image_data[:, :, :3] < 200) > 500
         if has_drawing:
-            return True, f"Great job writing '{target_char}'!"
+            return True, f"Great handwriting practice for '{target_char}'!"
         else:
             return False, "Please draw the character on the pad before grading."
 
