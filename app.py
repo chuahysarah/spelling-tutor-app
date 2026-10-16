@@ -14,7 +14,6 @@ from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
-# Child-friendly custom styling
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -58,24 +57,6 @@ html, body, [class*="css"] {
     background: #ffffff; 
     margin: .6rem 0;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
-}
-
-.badge-mastered {
-    background-color: #dcfce7;
-    color: #15803d;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.85rem;
-    font-weight: 600;
-}
-
-.badge-review {
-    background-color: #fee2e2;
-    color: #b91c1c;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.85rem;
-    font-weight: 600;
 }
 
 .stButton>button {
@@ -357,7 +338,6 @@ if error_detail and key:
 
 st.subheader("📖 Step 2: Let's learn our words!")
 
-# Progressive Mastery Summary Cards
 m_col1, m_col2 = st.columns(2)
 with m_col1:
     st.markdown(f"🌟 **Mastered Words:** {len(st.session_state.mastered_words)}")
@@ -423,20 +403,20 @@ else:
         if st.button("🔎 Show Extra Hint", key=f"hint-{idx}"):
             st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Sound out the letters!"))
         
-        # Child-friendly Canvas Pad for Chinese vs Text Box for English
+        # Lightweight lag-free canvas setup
         if is_chinese:
             st.markdown("✍️ **Write your characters on the magic pad:**")
             
             st_canvas(
                 fill_color="rgba(255, 255, 255, 0)",
-                stroke_width=5,
+                stroke_width=4,
                 stroke_color="#0284c7",
                 background_color="#f8fafc",
-                height=220,
-                width=340,
+                height=200,
+                width=320,
                 drawing_mode="freedraw",
                 update_streamlit=False,
-                key=f"canvas-{idx}",
+                key="canvas-quiz-pad",
             )
             st.caption("👆 Use your finger or stylus to draw!")
             
