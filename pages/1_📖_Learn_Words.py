@@ -22,6 +22,7 @@ DEFAULT_LISTS = {
 
 
 def fetch_available_lists() -> dict[str, str]:
+    """Fetches word lists from session state or Google Sheets API on direct cold start."""
     if "archived_lists" in st.session_state and st.session_state.archived_lists:
         return st.session_state.archived_lists
 
@@ -81,34 +82,49 @@ Items: """ + json.dumps(words, ensure_ascii=False)
         "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
     }
     
-    clean_key = api_key.strip().strip("'").strip('"')
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": clean_key
-    }
-
+    clean_token = api_key.strip().strip("'").strip('"')
     url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
 
+    # Authenticate AQ token via Bearer and x-goog-api-key headers
+    headers_bearer = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {clean_token}"
+    }
+
+    headers_goog = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": clean_token
+    }
+
+    last_err = None
+    
+    # Try Bearer Auth first
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=12)
+        resp = requests.post(url, json=payload, headers=headers_bearer, timeout=12)
         if resp.status_code == 200:
             raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
             match = re.search(r'\{.*\}', raw_text, re.DOTALL)
             if match:
                 data = json.loads(match.group())
                 return (data if isinstance(data, dict) else {}), None
-        else:
-            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
-            resp_fb = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
-            if resp_fb.status_code == 200:
-                raw_text = resp_fb.json()["candidates"][0]["content"]["parts"][0]["text"]
-                match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-                if match:
-                    data = json.loads(match.group())
-                    return (data if isinstance(data, dict) else {}), None
-            return {}, resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
+        last_err = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
     except Exception as exc:
-        return {}, str(exc)
+        last_err = str(exc)
+
+    # Try x-goog-api-key header fallback
+    try:
+        resp_fb = requests.post(url, json=payload, headers=headers_goog, timeout=12)
+        if resp_fb.status_code == 200:
+            raw_text = resp_fb.json()["candidates"][0]["content"]["parts"][0]["text"]
+            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+                return (data if isinstance(data, dict) else {}), None
+        last_err = resp_fb.json().get("error", {}).get("message", f"HTTP {resp_fb.status_code}")
+    except Exception as exc:
+        last_err = str(exc)
+
+    return {}, last_err or "Failed to connect to Gemini API."
 
 
 @st.cache_data(show_spinner=False, max_entries=512, ttl=7200)
