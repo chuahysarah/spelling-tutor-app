@@ -89,54 +89,68 @@ if st.session_state.archived_lists:
 
     st.info(f"📍 Active Practice List: **{st.session_state.active_week}**")
 else:
-    st.warning("No spelling lists available. Add a new list in the Parent Area below!")
+    st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
 
-# Parent Section: Add, Edit, or Delete Lists
-with st.expander("🛠️ Parent Area: Manage, Edit or Delete Weekly Lists", expanded=False):
-    st.write("### ➕ Add or Update List")
-    new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
-    new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
-    
-    if st.button("💾 Save to Weekly Archive", type="primary"):
-        if new_week_title.strip() and new_week_words.strip():
-            st.session_state.archived_lists[new_week_title.strip()] = new_week_words.strip()
-            st.session_state.active_week = new_week_title.strip()
-            st.session_state.raw_words = new_week_words.strip()
-            st.session_state.quiz_words = normalize_words(new_week_words.strip())
-            st.session_state.quiz_index = 0
-            st.session_state.quiz_score = 0
-            st.session_state.quiz_checked = False
-            st.session_state.cached_analysis = {}
-            st.success(f"🎉 Saved '{new_week_title}' to the archive!")
-            st.rerun()
-        else:
-            st.warning("Please enter both a title and words before saving.")
+# Parent Section: PIN Locked Area
+PARENT_PIN = "6666"  # PIN updated to 6666
 
-    st.divider()
+with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
+    st.caption("Grown-ups only! Enter PIN to unlock management controls.")
+    entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="parent_pin_input")
 
-    st.write("### 🗑️ Delete an Existing List")
-    if st.session_state.archived_lists:
-        list_to_delete = st.selectbox(
-            "Select list to delete:",
-            options=list(st.session_state.archived_lists.keys()),
-            key="delete_list_select"
-        )
-        if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
-            del st.session_state.archived_lists[list_to_delete]
-            st.success(f"Deleted '{list_to_delete}'!")
-            
-            # Reset active week if deleted
-            if list_to_delete == st.session_state.active_week:
-                if st.session_state.archived_lists:
-                    st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
-                    st.session_state.raw_words = st.session_state.archived_lists[st.session_state.active_week]
-                else:
-                    st.session_state.active_week = ""
-                    st.session_state.raw_words = ""
+    if entered_pin == PARENT_PIN:
+        st.success("🔓 Unlocked!")
+        st.write("---")
+        
+        # 1. Add or Update List
+        st.write("### ➕ Add or Update List")
+        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
+        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
+        
+        if st.button("💾 Save to Weekly Archive", type="primary"):
+            if new_week_title.strip() and new_week_words.strip():
+                st.session_state.archived_lists[new_week_title.strip()] = new_week_words.strip()
+                st.session_state.active_week = new_week_title.strip()
+                st.session_state.raw_words = new_week_words.strip()
+                st.session_state.quiz_words = normalize_words(new_week_words.strip())
+                st.session_state.quiz_index = 0
+                st.session_state.quiz_score = 0
+                st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
-            st.rerun()
-    else:
-        st.caption("No archived lists to delete.")
+                st.success(f"🎉 Saved '{new_week_title}' to the archive!")
+                st.rerun()
+            else:
+                st.warning("Please enter both a title and words before saving.")
+
+        st.divider()
+
+        # 2. Delete an Existing List
+        st.write("### 🗑️ Delete an Existing List")
+        if st.session_state.archived_lists:
+            list_to_delete = st.selectbox(
+                "Select list to delete:",
+                options=list(st.session_state.archived_lists.keys()),
+                key="delete_list_select"
+            )
+            if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
+                del st.session_state.archived_lists[list_to_delete]
+                st.success(f"Deleted '{list_to_delete}'!")
+                
+                # Reset active week if deleted
+                if list_to_delete == st.session_state.active_week:
+                    if st.session_state.archived_lists:
+                        st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
+                        st.session_state.raw_words = st.session_state.archived_lists[st.session_state.active_week]
+                    else:
+                        st.session_state.active_week = ""
+                        st.session_state.raw_words = ""
+                    st.session_state.cached_analysis = {}
+                st.rerun()
+        else:
+            st.caption("No archived lists to delete.")
+            
+    elif entered_pin != "":
+        st.error("❌ Incorrect PIN. Please try again.")
 
 words = normalize_words(st.session_state.raw_words)
 if words:
