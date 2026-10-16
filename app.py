@@ -16,68 +16,136 @@ API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
-:root { --ink:#26324b; --blue:#2864dc; --purple:#7652d6; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0; --sky:#e7f5ff; }
+:root {
+    --ink:#26324b; --body:#34415c; --blue:#3158b8; --blue-dark:#24448f;
+    --purple:#6746bd; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0;
+    --sky:#e6f4ff; --cream:#fffaf0; --surface:#ffffff; --focus:#ffc94a;
+}
 html, body, [class*="css"], button, input, select, textarea {
-    font-family:'Fredoka',sans-serif !important; color:var(--ink);
+    font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
+    color:var(--ink);
 }
-html, body, [data-testid="stAppViewContainer"] { background:#fffaf0 !important; }
-[data-testid="stHeader"] { background:rgba(255,250,240,.88) !important; }
-[data-testid="stMainBlockContainer"] { max-width:1100px; padding-top:2rem; }
-h1 { color:#3158b8 !important; font-weight:700 !important; letter-spacing:-.035em; }
-h2 { color:#6746bd !important; font-weight:700 !important; }
-h3 { color:#168d7c !important; font-weight:700 !important; }
-.stButton > button {
-    min-height:3.2rem; border:0 !important; border-radius:18px !important;
-    background:linear-gradient(115deg,#ff795e 0%,#ff9f54 100%) !important;
-    color:#fff !important; font-size:1.16rem !important; font-weight:700 !important;
-    padding:.65rem 1.25rem !important; box-shadow:0 5px 0 #df624b,0 9px 18px rgba(223,98,75,.16) !important;
-    transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
+html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+    background:var(--cream) !important;
 }
-.stButton > button:hover { transform:translateY(-2px); filter:saturate(1.12); box-shadow:0 7px 0 #df624b,0 12px 22px rgba(223,98,75,.2) !important; }
-.stButton > button:active { transform:translateY(2px); box-shadow:0 2px 0 #df624b !important; }
-.stButton > button:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid #3158b8 !important; outline-offset:3px; }
+[data-testid="stHeader"] { background:rgba(255,250,240,.94) !important; }
+[data-testid="stMainBlockContainer"] { max-width:1100px; padding:2rem 1rem; }
+
+/* Comfortable default text sizes and clearly differentiated headings. */
+p, li, [data-testid="stMarkdownContainer"] p {
+    color:var(--body); font-size:1.125rem; line-height:1.5;
+}
+h1, [data-testid="stMarkdownContainer"] h1 {
+    color:var(--blue) !important; font-size:2rem !important;
+    line-height:1.2; font-weight:700 !important; letter-spacing:-.02em;
+}
+h2, [data-testid="stMarkdownContainer"] h2 {
+    color:var(--purple) !important; font-size:1.625rem !important;
+    line-height:1.25; font-weight:700 !important;
+}
+h3, [data-testid="stMarkdownContainer"] h3 {
+    color:#126b5d !important; font-size:1.375rem !important;
+    line-height:1.3; font-weight:700 !important;
+}
+[data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] label {
+    color:var(--ink) !important; font-size:1.125rem !important;
+    line-height:1.4; font-weight:600;
+}
+
+/* High-contrast primary buttons; colorful gradients remain in supporting surfaces. */
+.stButton > button,
+[data-testid="stFormSubmitButton"] button {
+    min-height:2.75rem; border:2px solid var(--blue) !important;
+    border-radius:16px !important; padding:.65rem 1.15rem !important;
+    background:var(--blue) !important; color:#fff !important;
+    font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
+    font-size:1.125rem !important; font-weight:700 !important;
+    box-shadow:0 4px 0 var(--blue-dark),0 8px 16px rgba(49,88,184,.15) !important;
+    transition:transform .15s ease,box-shadow .15s ease,background-color .15s ease;
+}
+.stButton > button:hover,
+[data-testid="stFormSubmitButton"] button:hover {
+    background:var(--blue-dark) !important; border-color:var(--blue-dark) !important;
+    transform:translateY(-1px);
+}
+.stButton > button:active,
+[data-testid="stFormSubmitButton"] button:active {
+    transform:translateY(2px); box-shadow:0 1px 0 var(--blue-dark) !important;
+}
+
+/* Sidebar and controls retain the colorful child-friendly treatment. */
 [data-testid="stSidebar"] {
     background:linear-gradient(165deg,#e6f4ff 0%,#f0eaff 55%,#fff0e8 100%) !important;
     border-right:3px solid #d6e5ff !important;
 }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#34415c; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:var(--body); }
 [data-testid="stSidebarCollapseButton"] button {
-    background:linear-gradient(135deg,#ffd34f,#ffad52) !important; color:#26324b !important;
-    border:2px solid #efa83a !important; border-radius:12px !important;
+    min-width:2.75rem; min-height:2.75rem;
+    background:linear-gradient(135deg,#ffd34f,#ffad52) !important;
+    color:var(--ink) !important; border:2px solid #efa83a !important;
+    border-radius:12px !important;
 }
 [data-testid="stSidebar"] .stSelectbox > div > div {
-    background:#fff !important; border:2px solid #b8d9ff !important; border-radius:16px !important;
+    background:#fff !important; border:2px solid #b8d9ff !important;
+    border-radius:16px !important;
 }
-[data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stSelectbox"] > div > div {
-    border-radius:14px !important; border-color:#bdd8fa !important; background:#fff !important;
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] > div > div {
+    min-height:2.75rem; border-radius:14px !important;
+    border:2px solid #bdd8fa !important; background:#fff !important;
+    color:var(--ink) !important; font-size:1.125rem !important;
+}
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+    color:#526078 !important; opacity:1;
 }
 [data-testid="stExpander"] {
-    background:rgba(255,255,255,.88); border:2px solid #e5dcfb !important; border-radius:18px !important;
+    background:rgba(255,255,255,.92); border:2px solid #e5dcfb !important;
+    border-radius:18px !important;
 }
 [data-testid="stAlert"] { border-radius:16px !important; }
 hr { border-color:#e6ddf7 !important; }
+
+/* Existing home-page component classes, retained from your app. */
 .hero {
-    position:relative; overflow:hidden; padding:2.4rem 1.8rem; border-radius:30px;
+    position:relative; overflow:hidden; padding:2.4rem 1.8rem;
+    border-radius:30px;
     background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 48%,#d9eeff 100%);
     border:3px solid #fff; text-align:center; margin:0 0 1.7rem;
     box-shadow:0 12px 30px rgba(62,83,132,.12),inset 0 0 0 2px rgba(255,198,76,.6);
 }
-.hero h1 { color:#3158b8 !important; margin-bottom:.55rem; font-size:2.5rem !important; }
-.hero p { color:#39445d; font-size:1.2rem; margin:0; }
+.hero h1 {
+    color:var(--blue) !important; margin-bottom:.55rem;
+    font-size:2.5rem !important;
+}
+.hero p { color:var(--ink) !important; font-size:1.2rem; margin:0; }
 .action-card {
     padding:1.45rem 1.2rem; min-height:155px; border-radius:24px;
     border:2px solid #fff; text-align:center;
     background:linear-gradient(145deg,#fff 0%,#eff8ff 100%);
     box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff;
 }
-.action-card h3 { font-size:1.65rem; color:#3158b8; margin-bottom:.4rem; }
-.action-card p { font-size:1.05rem; color:#4b5872; }
+.action-card h3 { font-size:1.5rem !important; color:var(--blue) !important; margin-bottom:.4rem; }
+.action-card p { font-size:1.05rem; color:var(--body); }
+
+/* Visible keyboard focus and reduced-motion support. */
+:where(button,input,textarea,select,a,[tabindex]):focus-visible {
+    outline:3px solid var(--focus) !important; outline-offset:3px !important;
+    box-shadow:0 0 0 2px var(--ink) !important;
+}
 @media (max-width:640px) {
     [data-testid="stMainBlockContainer"] { padding:1.1rem 1rem 2rem; }
     .hero { padding:1.6rem 1rem; border-radius:22px; }
     .hero h1 { font-size:2rem !important; }
+    p, li, [data-testid="stMarkdownContainer"] p { font-size:1.0625rem; }
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea { font-size:1.125rem !important; }
 }
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
+@media (prefers-reduced-motion:reduce) {
+    *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
