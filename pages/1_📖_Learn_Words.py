@@ -427,17 +427,177 @@ def render_hanzi_animations(word: str) -> None:
     if not chinese_chars:
         return
 
-    targets = ""
-    scripts = ""
-    for i, char in enumerate(chinese_chars):
-        div_id = f"target-{i}-{ord(char)}"
-        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 3px solid #bae6fd; border-radius: 16px; background: #ffffff;"></div>'
-        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 110, height: 110, padding: 6, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
+    html_code = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap');
+* { box-sizing:border-box; }
+body { margin:0; padding:4px; background:transparent; color:#111827; font:600 16px/1.4 'Nunito',Arial,sans-serif; }
+.instructions { margin:0 0 10px; }
+.cards { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; align-items:flex-start; }
+.stroke-card { width:192px; padding:8px; border:2px solid #64748b; border-radius:16px; background:#fff; }
+.character-label { margin:0 0 4px; text-align:center; font-size:22px; font-weight:800; }
+.character-stage { position:relative; width:172px; height:172px; }
+.character-target { width:172px; height:172px; }
+.number-layer { position:absolute; inset:0; width:172px; height:172px; pointer-events:none; }
+.number-layer[hidden] { display:none; }
+.stroke-number text { fill:#111827; font:800 11px Arial,sans-serif; text-anchor:middle; dominant-baseline:central; }
+.stroke-number circle { fill:#ffc94a; stroke:#111827; stroke-width:1.5; }
+.leader { stroke:#475569; stroke-width:1; }
+label { display:flex; align-items:center; gap:8px; min-height:48px; cursor:pointer; font-size:14px; }
+input[type="checkbox"] { width:22px; height:22px; accent-color:#173f91; }
+button { width:100%; min-height:48px; border:2px solid #173f91; border-radius:10px; background:#173f91; color:white; font:800 16px 'Nunito',Arial,sans-serif; cursor:pointer; }
+button:disabled { color:#374151; background:#e5e7eb; border-color:#64748b; cursor:default; }
+button:focus-visible, input:focus-visible { outline:3px solid #ffc000; outline-offset:2px; box-shadow:0 0 0 2px #111827; }
+.status { margin:6px 0; min-height:20px; text-align:center; color:#374151; font-size:13px; }
+.error { color:#8e1b10; }
+</style>
+</head>
+<body>
+<p class="instructions">Numbers show the order of strokes. Each label points to where a stroke starts.</p>
+<div class="cards" id="stroke-cards"></div>
+<script>
+(() => {
+    const characters = __CHARACTERS__;
+    const SIZE = 172;
+    const PADDING = 12;
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    num_rows = (len(chinese_chars) + 3) // 4
-    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">{targets}</div><script>{scripts}</script></body></html>"""
-    components.html(html_code, height=num_rows * 125 + 20)
+    function svgElement(tag, attrs) {
+        const node = document.createElementNS(SVG_NS, tag);
+        for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, value);
+        return node;
+    }
 
+    // Spread overlapping badges slightly, with leader lines back to exact starts.
+    function placeBadge(start, used) {
+        for (let attempt = 0; attempt < 100; attempt++) {
+            const radius = attempt === 0 ? 0 : 3 * Math.sqrt(attempt);
+            const angle = attempt * 2.39996323;
+            const candidate = {
+                x: Math.min(SIZE - 11, Math.max(11, start.x + radius * Math.cos(angle))),
+                y: Math.min(SIZE - 11, Math.max(11, start.y + radius * Math.sin(angle)))
+            };
+            if (used.every(p => Math.hypot(p.x - candidate.x, p.y - candidate.y) >= 21)) {
+                used.push(candidate);
+                return candidate;
+            }
+        }
+        const fallback = { x:Math.min(SIZE - 11, Math.max(11, start.x)), y:Math.min(SIZE - 11, Math.max(11, start.y)) };
+        used.push(fallback);
+        return fallback;
+    }
+
+    async function buildCard(character, index) {
+        const card = document.createElement('section');
+        card.className = 'stroke-card';
+        card.setAttribute('aria-label', 'Stroke order for ' + character);
+        const heading = document.createElement('h3');
+        heading.className = 'character-label';
+        heading.textContent = character;
+        const stage = document.createElement('div');
+        stage.className = 'character-stage';
+        const target = document.createElement('div');
+        target.className = 'character-target';
+        target.id = 'hanzi-target-' + index;
+        const overlay = svgElement('svg', { viewBox:'0 0 ' + SIZE + ' ' + SIZE, 'aria-hidden':'true' });
+        overlay.classList.add('number-layer');
+        stage.append(target, overlay);
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.setAttribute('aria-label', 'Show stroke numbers for ' + character);
+        label.append(checkbox, document.createTextNode('Show stroke numbers'));
+        const status = document.createElement('p');
+        status.className = 'status';
+        status.textContent = 'Loading strokes…';
+        const pause = document.createElement('button');
+        pause.type = 'button';
+        pause.disabled = true;
+        pause.textContent = reducedMotion ? 'Play strokes' : 'Pause';
+        pause.setAttribute('aria-label', 'Pause stroke animation for ' + character);
+        card.append(heading, stage, label, status, pause);
+        document.getElementById('stroke-cards').append(card);
+        checkbox.addEventListener('change', () => { overlay.hidden = !checkbox.checked; });
+        try {
+            if (!window.HanziWriter) throw new Error('Stroke library did not load');
+            const data = await HanziWriter.loadCharacterData(character);
+            const transform = HanziWriter.getScalingTransform(SIZE, SIZE, PADDING);
+            const coordinateGroup = svgElement('g', { transform:transform.transform });
+            const matrix = coordinateGroup.transform.baseVal.consolidate().matrix;
+            const positions = [];
+            const medians = Array.isArray(data.medians) ? data.medians : [];
+            medians.forEach((median, strokeIndex) => {
+                if (!Array.isArray(median) || !median.length) return;
+                const [x, y] = median[0];
+                const start = { x:matrix.a * x + matrix.c * y + matrix.e, y:matrix.b * x + matrix.d * y + matrix.f };
+                const badge = placeBadge(start, positions);
+                const group = svgElement('g', { 'data-stroke-number':strokeIndex + 1 });
+                group.classList.add('stroke-number');
+                if (Math.hypot(badge.x - start.x, badge.y - start.y) > 4) {
+                    const line = svgElement('line', { x1:start.x, y1:start.y, x2:badge.x, y2:badge.y });
+                    line.classList.add('leader');
+                    group.append(line);
+                }
+                group.append(svgElement('circle', { cx:badge.x, cy:badge.y, r:9 }));
+                const number = svgElement('text', { x:badge.x, y:badge.y });
+                number.textContent = String(strokeIndex + 1);
+                group.append(number);
+                overlay.append(group);
+            });
+            const writer = HanziWriter.create(target.id, character, {
+                width:SIZE, height:SIZE, padding:PADDING,
+                showOutline:true, showCharacter:reducedMotion,
+                strokeColor:'#173f91', outlineColor:'#cbd5e1',
+                strokeAnimationSpeed:1.5, delayBetweenStrokes:80,
+                charDataLoader: (_char, success) => success(data)
+            });
+            let started = !reducedMotion;
+            let paused = false;
+            if (started) writer.loopCharacterAnimation();
+            status.textContent = data.strokes.length + ' strokes' + (medians.length ? '' : ' — number labels unavailable');
+            pause.disabled = false;
+            pause.setAttribute('aria-label', (started ? 'Pause' : 'Play') + ' stroke animation for ' + character);
+            pause.addEventListener('click', () => {
+                if (!started) {
+                    writer.loopCharacterAnimation();
+                    started = true;
+                    paused = false;
+                } else if (paused) {
+                    writer.resumeAnimation();
+                    paused = false;
+                } else {
+                    writer.pauseAnimation();
+                    paused = true;
+                }
+                pause.textContent = paused ? 'Resume' : 'Pause';
+                pause.setAttribute('aria-label', (paused ? 'Resume' : 'Pause') + ' stroke animation for ' + character);
+            });
+            // Exposed on this local card for repeatable browser smoke tests.
+            card.dataset.strokeCount = String(data.strokes.length);
+            card.dataset.ready = 'true';
+        } catch (error) {
+            status.textContent = 'Strokes are unavailable. Please try this item again later.';
+            status.classList.add('error');
+            checkbox.disabled = true;
+            card.dataset.ready = 'error';
+        }
+    }
+    characters.forEach((character, index) => { buildCard(character, index); });
+})();
+</script>
+</body>
+</html>'''
+    html_code = html_code.replace("__CHARACTERS__", json.dumps(chinese_chars, ensure_ascii=True))
+    # Reserve room for a one-column phone layout; allow internal scrolling for long sentences.
+    frame_height = min(len(chinese_chars) * 320 + 80, 720)
+    components.html(html_code, height=frame_height, scrolling=True)
 
 def rename_child_profile(old_name: str, new_name: str):
     if not new_name or new_name == old_name:
