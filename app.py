@@ -249,6 +249,16 @@ with col2:
     if st.button(f"👉 Start Dictation Quiz", type="primary", use_container_width=True):
         st.switch_page("pages/2_🎯_Dictation_Quiz.py")
 
+st.markdown("""
+<div class="action-card">
+    <h3>🌱 Word Garden</h3>
+    <p>See your stars and watch mastered words grow into flowers!</p>
+</div>
+""", unsafe_allow_html=True)
+st.write("")
+if st.button("🌱 Visit Your Word Garden", type="primary", use_container_width=True):
+    st.switch_page("pages/4_🌱_Word_Garden.py")
+
 st.divider()
 
 PARENT_PIN = "6666"
