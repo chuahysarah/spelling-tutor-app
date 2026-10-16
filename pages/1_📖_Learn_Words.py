@@ -20,6 +20,40 @@ DEFAULT_LISTS = {
     "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
 }
 
+# Built-in offline memory tricks & meanings for common Chinese characters
+CHINESE_MEMORY_DICT = {
+    "事情": {
+        "meaning": "Matters, affairs, or things to do (事情/任务).",
+        "sentence": "今天我有一件很重要的事情要完成。",
+        "tip": "💡 Memory Trick: '情' has '忄' (heart) on the left! It means things you care about with your heart!"
+    },
+    "学校": {
+        "meaning": "School — a fun place where kids learn and play!",
+        "sentence": "我和朋友一起去学校上课。",
+        "tip": "💡 Memory Trick: Both '学' and '校' have '木' (wood) and roof radicals! Think of a wooden school building!"
+    },
+    "认真": {
+        "meaning": "Serious, attentive, and focused (认真/用心).",
+        "sentence": "小明认真地听老师讲课。",
+        "tip": "💡 Memory Trick: '认' has '讠' (words) — pay close attention to words when listening carefully!"
+    },
+    "爸爸": {
+        "meaning": "Dad / Father.",
+        "sentence": "爸爸带我去公园骑脚踏车。",
+        "tip": "💡 Memory Trick: Notice '父' (father radical) at the top of both characters!"
+    },
+    "妈妈": {
+        "meaning": "Mom / Mother.",
+        "sentence": "妈妈准备了美味的晚餐。",
+        "tip": "💡 Memory Trick: Look at the left side! It has '女' (woman) radical because Mom is a lady!"
+    },
+    "学习": {
+        "meaning": "To learn and practice new knowledge (学习).",
+        "sentence": "我们要努力学习新知识。",
+        "tip": "💡 Memory Trick: '学' has a roof radical '宀' at the top — learning under the school roof!"
+    }
+}
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -37,14 +71,6 @@ h3 { font-size: 1.7rem !important; color: #0f766e !important; }
     font-size: 1.3rem !important;
     font-weight: 700 !important;
     border-radius: 18px !important;
-}
-
-.word-card {
-    background: #f0f9ff;
-    border-radius: 20px;
-    padding: 1.2rem;
-    border: 2px solid #bae6fd;
-    margin-bottom: 1rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -98,8 +124,8 @@ For each item, provide:
 2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
 3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
 4. sentence: short, relatable daily life context sentence.
-5. spelling_tip: a super fun, child-friendly memory trick or phonics hint! 
-   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth)...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
+5. spelling_tip: a super fun, child-friendly memory trick or radical/phonics hint! 
+   - For CHINESE: Explain character components & radicals! (e.g., "'情' has '忄' (heart) on the left side!", "'休' is a person '人' leaning against a tree '木'!").
    - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
 6. pinyin: Chinese tone-marked pinyin or empty for English.
 
@@ -265,10 +291,14 @@ for index, word in enumerate(words):
             st.write(f"💬 **Example:** {sentence}")
             st.write(f"⭐ **Fun Memory Tip:** {tip}")
         else:
+            preset = CHINESE_MEMORY_DICT.get(word, {})
             py = str(info.get("pinyin") or local_pinyin(word))
-            meaning = info.get('meaning') or f"Chinese word / 词语: {word}"
-            sentence = info.get("sentence") or f"今天我们要学习 '{word}' 这个词。"
-            tip = info.get('spelling_tip') or f"Observe the stroke order and practice writing '{word}' step-by-step!"
+            meaning = info.get('meaning') or preset.get('meaning') or f"Chinese word / 词语: {word}"
+            sentence = info.get("sentence") or preset.get('sentence') or f"今天我们要学习 '{word}' 这个词。"
+            
+            # Character radical memory breakdown fallback
+            default_tip = f"Notice the structure of '{word}'! Practice the stroke order step-by-step!"
+            tip = info.get('spelling_tip') or preset.get('tip') or default_tip
 
             st.write(f"🗣️ **Pinyin:** `{py}`")
             st.write("✍️ **Stroke Order Animation:**")
