@@ -8,6 +8,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
+# Retrieve Google Apps Script Web App URL from Secrets
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 st.markdown("""
@@ -37,14 +38,11 @@ def fetch_remote_lists() -> dict[str, str]:
             resp = requests.get(API_URL, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, dict) and data:
-                    return data
+                if isinstance(data, dict):
+                    return data  # Returns live dict from Google Sheet, including empty {}
         except Exception:
             pass
-    return {
-        "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
-        "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
-    }
+    return {}
 
 
 def save_remote_list(title: str, words: str) -> None:
@@ -52,7 +50,7 @@ def save_remote_list(title: str, words: str) -> None:
         try:
             requests.post(API_URL, json={"action": "save", "title": title, "words": words}, timeout=5)
         except Exception as e:
-            st.error(f"Failed to sync save: {e}")
+            st.error(f"Failed to sync save to database: {e}")
 
 
 def delete_remote_list(title: str) -> None:
@@ -60,7 +58,7 @@ def delete_remote_list(title: str) -> None:
         try:
             requests.post(API_URL, json={"action": "delete", "title": title}, timeout=5)
         except Exception as e:
-            st.error(f"Failed to sync delete: {e}")
+            st.error(f"Failed to sync delete to database: {e}")
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -74,6 +72,7 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
+# Initialize Session State Variables
 if "archived_lists" not in st.session_state:
     st.session_state.archived_lists = fetch_remote_lists()
 
@@ -94,14 +93,14 @@ if "unfamiliar_words" not in st.session_state:
 if "parent_unlocked" not in st.session_state:
     st.session_state.parent_unlocked = False
 
-# Sidebar
+# Sidebar Configuration
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
     api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value=st.session_state.get("api_key", ""))
     if api_key_input:
         st.session_state.api_key = api_key_input.strip()
 
-# Child Section
+# Child Section: Select Active Practice Week
 st.subheader("🎒 Step 1: Select Your Week!")
 
 if st.session_state.archived_lists:
@@ -127,7 +126,7 @@ if st.session_state.archived_lists:
 else:
     st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
 
-# Parent Section
+# Parent Section: PIN Locked Management Controls
 PARENT_PIN = "6666"
 
 with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
@@ -153,7 +152,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
         new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
         new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
         
-        if st.button("💾 Save List", type="primary"):
+        if st.button("💾 Save List to Google Sheets", type="primary"):
             title_clean = new_week_title.strip()
             words_clean = new_week_words.strip()
             if title_clean and words_clean:
@@ -168,6 +167,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
 
+                # Safely re-lock panel upon saving
                 st.session_state.parent_unlocked = False
                 st.rerun()
             else:
@@ -196,6 +196,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                         st.session_state.raw_words = ""
                     st.session_state.cached_analysis = {}
 
+                # Safely re-lock panel upon deleting
                 st.session_state.parent_unlocked = False
                 st.rerun()
         else:
