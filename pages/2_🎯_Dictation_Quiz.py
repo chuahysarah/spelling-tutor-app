@@ -18,7 +18,7 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
-@st.cache_data(show_spinner=False, max_entries=256)
+@st.cache_data(show_spinner=False, max_entries=512, ttl=7200)
 def make_audio(text: str, lang: str) -> bytes:
     from io import BytesIO
     audio = BytesIO()
@@ -53,7 +53,7 @@ def render_hanzi_animations(word: str) -> None:
 
 st.title("🎯 Step 3: Dictation Quiz")
 
-# Initialize persistent session tracking
+# Initialize persistent session state tracking
 if "quiz_index" not in st.session_state:
     st.session_state.quiz_index = 0
 if "quiz_score" not in st.session_state:
@@ -97,7 +97,7 @@ if idx >= len(active_quiz_words):
         st.session_state.quiz_checked = False
         st.rerun()
 
-    if st.session_state.unfamiliar_words and col_review.button(f"🔴 Re-practice Unfamiliar Only ({len(st.session_state.unfamiliar_words)})", type="secondary"):
+    if st.session_state.unfamiliar_words and col_review.button(f"🔴 Practice Unfamiliar Only ({len(st.session_state.unfamiliar_words)})", type="secondary"):
         st.session_state.quiz_words = list(st.session_state.unfamiliar_words)
         st.session_state.quiz_index = 0
         st.session_state.quiz_score = 0
