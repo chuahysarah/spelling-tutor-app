@@ -85,7 +85,6 @@ Items: """ + json.dumps(words, ensure_ascii=False)
     clean_token = api_key.strip().strip("'").strip('"')
     url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
 
-    # Authenticate AQ token via Bearer and x-goog-api-key headers
     headers_bearer = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {clean_token}"
@@ -98,7 +97,6 @@ Items: """ + json.dumps(words, ensure_ascii=False)
 
     last_err = None
     
-    # Try Bearer Auth first
     try:
         resp = requests.post(url, json=payload, headers=headers_bearer, timeout=12)
         if resp.status_code == 200:
@@ -111,7 +109,6 @@ Items: """ + json.dumps(words, ensure_ascii=False)
     except Exception as exc:
         last_err = str(exc)
 
-    # Try x-goog-api-key header fallback
     try:
         resp_fb = requests.post(url, json=payload, headers=headers_goog, timeout=12)
         if resp_fb.status_code == 200:
@@ -215,15 +212,13 @@ if f"cached_analysis_{active_child}" not in st.session_state:
 
 key = get_api_key()
 
-if key and not st.session_state[f"cached_analysis_{active_child}"] and words:
-    with st.spinner(f"✨ Fetching child-friendly memory tricks for {active_child}..."):
+if key and not st.session_state.get(f"cached_analysis_{active_child}") and words:
+    with st.spinner(f"✨ Loading word details for {active_child}..."):
         data, err = get_analysis(words, key)
         if not err and data:
             st.session_state[f"cached_analysis_{active_child}"] = data
-        elif err:
-            st.warning(f"Note: Unable to load AI details ({err}). Using standard word details.")
 
-analysis = st.session_state[f"cached_analysis_{active_child}"]
+analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
