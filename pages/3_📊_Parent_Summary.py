@@ -1,81 +1,80 @@
 from __future__ import annotations
 
-import re
+import json
+import requests
 import streamlit as st
 
-st.set_page_config(page_title="Parent Progress Summary 📊", page_icon="📊", layout="centered")
+st.set_page_config(page_title="Parent Dashboard 📊", page_icon="📊", layout="centered")
 
-st.title("📊 Parent Summary & Assessment Tracker")
-st.caption("A quick overview of your child's dictation accuracy, mastered vocabulary, and revision queues.")
+API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
-# Retrieve Session State
-raw_words = st.session_state.get("raw_words", "")
+st.title("📊 Parent Summary & Practice History")
+
+# PIN Protection
+PARENT_PIN = "6666"
+
+if "parent_dashboard_unlocked" not in st.session_state:
+    st.session_state.parent_dashboard_unlocked = False
+
+if not st.session_state.parent_dashboard_unlocked:
+    st.info("🔒 Enter PIN to view detailed learning history.")
+    entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="dash_pin_entry")
+    if entered_pin == PARENT_PIN:
+        st.session_state.parent_dashboard_unlocked = True
+        st.rerun()
+    elif entered_pin != "":
+        st.error("❌ Incorrect PIN.")
+    st.stop()
+
+
+def fetch_practice_history() -> list[dict]:
+    if API_URL:
+        try:
+            resp = requests.get(f"{API_URL}?action=get_history", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    return []
+
+
+st.subheader("🌟 Current Session Overview")
+col1, col2 = st.columns(2)
+
 mastered = st.session_state.get("mastered_words", set())
 unfamiliar = st.session_state.get("unfamiliar_words", set())
 
-full_word_list = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
-total_words = len(full_word_list)
-
-if total_words == 0:
-    st.info("👆 No active spelling list found. Add a weekly list on the Home page to start tracking progress!")
-    st.stop()
-
-# Key Progress Metrics using Native Streamlit Metrics
-st.subheader("📈 Overall Performance Metrics")
-
-cols = st.columns(3)
-with cols[0]:
-    with st.container(border=True):
-        st.metric(label="Total Words", value=total_words)
-
-with cols[1]:
-    with st.container(border=True):
-        st.metric(label="Mastered (🌟)", value=len(mastered))
-
-with cols[2]:
-    with st.container(border=True):
-        st.metric(label="Needs Practice (🔴)", value=len(unfamiliar))
-
-# Progress Bar
-completion_rate = (len(mastered) / total_words) if total_words > 0 else 0.0
-st.progress(completion_rate, text=f"Mastery Progress: {int(completion_rate * 100)}%")
-
-st.divider()
-
-# Itemized Breakdown
-st.subheader("📋 Word Breakdown & Status")
-
-col_a, col_b = st.columns(2)
-
-with col_a:
-    st.markdown("### 🌟 Mastered Words")
+with col1:
+    st.metric(label="✅ Mastered Words (Session)", value=len(mastered))
     if mastered:
-        for word in sorted(mastered):
-            st.success(f"✅ {word}")
+        st.write(", ".join(mastered))
     else:
-        st.caption("No words marked as mastered yet.")
+        st.caption("No mastered words yet this session.")
 
-with col_b:
-    st.markdown("### 🔴 More Practices")
+with col2:
+    st.metric(label="💡 Needs Practice (Session)", value=len(unfamiliar))
     if unfamiliar:
-        for word in sorted(unfamiliar):
-            st.error(f"❌ {word}")
+        st.write(", ".join(unfamiliar))
     else:
-        st.caption("Great job! No tricky words flagged right now.")
+        st.caption("No practice flags currently.")
 
 st.divider()
 
-# Actionable Study Plan Guidance for Parents
-st.subheader("💡 Recommended Home Study Plan")
+st.subheader("📜 All Past Practice Attempts")
 
-if len(unfamiliar) > 0:
-    st.warning(f"**Focus Area:** Your child needs extra practice on **{len(unfamiliar)} word(s)**.")
-    st.markdown("""
-    * **Targeted Revision:** Go to the **Dictation Quiz** page and select **'🔴 Practice Unfamiliar Only'**.
-    * **Stroke Order Check:** For Chinese characters in the review list, open the **Learn Words** page to review character animations together.
-    * **Phonics & Visual Association:** Focus on breaking tricky English words into syllables before dictation.
-    """)
-elif len(mastered) == total_words:
-    st.success("🎉 **Outstanding Result!** Your child has mastered all the words in this week's list. Ready for school dictation!")
+history = fetch_practice_history()
+
+if history:
+    for attempt in reversed(history):
+        with st.expander(f"🗓️ {attempt.get('timestamp', 'N/A')} — {attempt.get('week_title', 'Spelling Practice')} (Score: {attempt.get('score')}/{attempt.get('total_words')})"):
+            st.write(f"🎯 **Score:** {attempt.get('score')} / {attempt.get('total_words')}")
+            st.write(f"✅ **Mastered Words:** {attempt.get('mastered', 'None')}")
+            st.write(f"💡 **Needs Practice Words:** {attempt.get('unfamiliar', 'None')}")
 else:
-    st.info("💡 Start the **Dictation Quiz** to evaluate which words your child knows well and which ones need review.")
+    st.info("No past practice logs found in database. Complete a quiz to start building practice history!")
+
+if st.button("🔒 Lock Dashboard", type="secondary"):
+    st.session_state.parent_dashboard_unlocked = False
+    st.rerun()
