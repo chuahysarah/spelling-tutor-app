@@ -33,6 +33,14 @@ h3 { font-size: 1.8rem !important; color: #0f766e !important; }
     border-radius: 20px !important;
     padding: 0.7rem 1.4rem !important;
 }
+
+.stTextInput > div > div > input {
+    font-size: 1.6rem !important;
+    font-weight: 600 !important;
+    border-radius: 16px !important;
+    padding: 0.6rem 1rem !important;
+    border: 3px solid #bae6fd !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -259,66 +267,111 @@ with audio_col1:
 
 st.write("---")
 
-if st.session_state[f"quiz_checked_{active_child}"]:
-    col_pad, col_ref = st.columns([1, 1], gap="medium")
-else:
-    col_pad, col_ref = st.columns([1, 0.01])
+# Adaptive UI: Typing for English vs Handwriting Pad for Chinese
+if is_chinese:
+    if st.session_state[f"quiz_checked_{active_child}"]:
+        col_pad, col_ref = st.columns([1, 1], gap="medium")
+    else:
+        col_pad, col_ref = st.columns([1, 0.01])
 
-with col_pad:
-    st.markdown("### ✏️ Your Writing Pad")
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 255, 255, 0)",
-        stroke_width=7,
-        stroke_color="#000000",
-        background_color="#ffffff",
-        height=280,
-        width=280,
-        drawing_mode="freedraw",
-        update_streamlit=True,
-        return_image_data=True,
-        key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
+    with col_pad:
+        st.markdown("### ✏️ Your Chinese Writing Pad")
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 255, 255, 0)",
+            stroke_width=7,
+            stroke_color="#000000",
+            background_color="#ffffff",
+            height=280,
+            width=280,
+            drawing_mode="freedraw",
+            update_streamlit=True,
+            return_image_data=True,
+            key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
+        )
+
+    with col_ref:
+        if st.session_state[f"quiz_checked_{active_child}"]:
+            st.markdown(f"### 🔍 Correct Word: **{target_word}**")
+            render_hanzi_animations(target_word)
+
+    st.write("---")
+
+    if not st.session_state[f"quiz_checked_{active_child}"]:
+        btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+        with btn_col2:
+            if st.button("🔍 Check Answer & Stroke Order", type="primary", use_container_width=True):
+                st.session_state[f"quiz_checked_{active_child}"] = True
+                st.rerun()
+    else:
+        if st.session_state[f"quiz_result_{active_child}"] is None:
+            st.markdown("<h3 style='text-align: center;'>📝 How did your writing look?</h3>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            
+            with c1:
+                if st.button("🌟 Pass / Correct", type="primary", use_container_width=True):
+                    st.session_state[f"quiz_score_{active_child}"] += 1
+                    st.session_state[f"mastered_words_{active_child}"].add(target_word)
+                    st.session_state[f"quiz_result_{active_child}"] = "correct"
+                    st.rerun()
+
+            with c2:
+                if st.button("❌ Needs Practice", type="secondary", use_container_width=True):
+                    st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
+                    st.session_state[f"quiz_result_{active_child}"] = "incorrect"
+                    st.rerun()
+
+        else:
+            if st.session_state[f"quiz_result_{active_child}"] == "correct":
+                st.success(f"🌟 Marked Correct! Great job, {active_child}!")
+            else:
+                st.warning(f"💡 Marked for practice! Keep it up, {active_child}!")
+
+            btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+            with btn_col2:
+                if st.button("➡️ Next Word", type="primary", use_container_width=True):
+                    st.session_state[f"quiz_index_{active_child}"] += 1
+                    st.session_state[f"quiz_checked_{active_child}"] = False
+                    st.session_state[f"quiz_result_{active_child}"] = None
+                    st.rerun()
+
+else:
+    # English Word Typing & Automated Verification
+    st.markdown("### 🔤 Type Your English Spelling Answer:")
+    
+    typed_ans = st.text_input(
+        "Type word here:",
+        placeholder="Type the word you heard...",
+        key=f"eng_input_{active_child}_{selected_list_title}_{current_idx}",
+        disabled=st.session_state[f"quiz_checked_{active_child}"]
     )
 
-with col_ref:
-    if st.session_state[f"quiz_checked_{active_child}"]:
-        st.markdown(f"### 🔍 Correct Word: **{target_word}**")
-        if is_chinese:
-            render_hanzi_animations(target_word)
-        else:
-            st.info(f"Target Word: **{target_word}**")
+    st.write("")
 
-st.write("---")
+    if not st.session_state[f"quiz_checked_{active_child}"]:
+        btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
+        with btn_col2:
+            if st.button("✅ Check English Spelling", type="primary", use_container_width=True):
+                clean_user = typed_ans.strip().casefold()
+                clean_target = target_word.strip().casefold()
+                
+                if clean_user == clean_target:
+                    st.session_state[f"quiz_score_{active_child}"] += 1
+                    st.session_state[f"mastered_words_{active_child}"].add(target_word)
+                    st.session_state[f"quiz_result_{active_child}"] = "correct"
+                else:
+                    st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
+                    st.session_state[f"quiz_result_{active_child}"] = "incorrect"
 
-if not st.session_state[f"quiz_checked_{active_child}"]:
-    btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
-    with btn_col2:
-        if st.button("🔍 Check Answer & Stroke Order", type="primary", use_container_width=True):
-            st.session_state[f"quiz_checked_{active_child}"] = True
-            st.rerun()
-else:
-    if st.session_state[f"quiz_result_{active_child}"] is None:
-        st.markdown("<h3 style='text-align: center;'>📝 How did your writing look?</h3>", unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        
-        with c1:
-            if st.button("🌟 Pass / Correct", type="primary", use_container_width=True):
-                st.session_state[f"quiz_score_{active_child}"] += 1
-                st.session_state[f"mastered_words_{active_child}"].add(target_word)
-                st.session_state[f"quiz_result_{active_child}"] = "correct"
-                st.rerun()
-
-        with c2:
-            if st.button("❌ Needs Practice", type="secondary", use_container_width=True):
-                st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
-                st.session_state[f"quiz_result_{active_child}"] = "incorrect"
+                st.session_state[f"quiz_checked_{active_child}"] = True
                 st.rerun()
 
     else:
         if st.session_state[f"quiz_result_{active_child}"] == "correct":
-            st.success(f"🌟 Marked Correct! Great job, {active_child}!")
+            st.success(f"🌟 Correct Spelling! Awesome job, {active_child}: **{target_word}**")
         else:
-            st.warning(f"💡 Marked for practice! Keep it up, {active_child}!")
+            st.error(f"❌ Correct Spelling: **{target_word}**")
 
+        st.write("")
         btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
         with btn_col2:
             if st.button("➡️ Next Word", type="primary", use_container_width=True):
