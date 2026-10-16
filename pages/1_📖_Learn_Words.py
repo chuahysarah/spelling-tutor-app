@@ -45,9 +45,26 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     if not api_key:
         return {}, "No API key configured."
     
-    prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character as strings, e.g. ['横','竖','撇','捺']; do not invent detailed paths). Items: """ + json.dumps(words, ensure_ascii=False)
+    # Prompt updated for child-friendly, bilingual memory tricks & tips!
+    prompt = """You are an encouraging primary school spelling tutor for a 7-9 year old child. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. 
+
+For each item, provide:
+1. language: 'English' or 'Chinese'
+2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
+3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
+4. sentence: short, relatable daily life context sentence.
+5. spelling_tip: a super fun, child-friendly memory trick or phonics hint! 
+   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth) because...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
+   - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
+6. pinyin: Chinese tone-marked pinyin or empty for English.
+7. stroke_count: integer or null.
+8. radical: Chinese radical or empty.
+9. structure: character structure (e.g. 左右结构/上下结构) or empty.
+10. strokes: concise ordered list of stroke names as strings.
+
+Items: """ + json.dumps(words, ensure_ascii=False)
     
-    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}}
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}}
     models_to_try = get_available_models(api_key)
     last_err = None
 
@@ -119,9 +136,8 @@ if "cached_analysis" not in st.session_state:
 
 key = get_api_key()
 
-# Fetch AI analysis only ONCE per list submission and store in session_state
 if key and not st.session_state.cached_analysis:
-    with st.spinner("✨ Preparing your study notes from Gemini..."):
+    with st.spinner("✨ Creating fun memory tricks & study notes..."):
         data, err = get_analysis(words, key)
         if not err:
             st.session_state.cached_analysis = data
@@ -131,18 +147,18 @@ if key and not st.session_state.cached_analysis:
 analysis = st.session_state.cached_analysis
 
 if not key:
-    st.info("💡 Add a Gemini API Key in the sidebar to generate definitions, example sentences, and phonics tips!")
+    st.info("💡 Add a Gemini API Key in the sidebar to generate child-friendly definitions, example sentences, and bilingual memory tricks!")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
     lang = str(info.get("language") or guess_language(word))
-    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=False):
+    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
         audio_button(word, lang, f"audio-{word}")
         if lang == "English":
             st.write(f"🧩 **Syllables:** {info.get('syllables', '—')}")
             st.write(f"💡 **Meaning:** {info.get('meaning', '—')}")
             st.write(f"💬 **Example:** {info.get('sentence', '—')}")
-            st.write(f"⭐ **Tip:** {info.get('spelling_tip', '—')}")
+            st.write(f"💡 **Fun Memory Tip:** {info.get('spelling_tip', '—')}")
         else:
             py = str(info.get("pinyin") or local_pinyin(word))
             st.write(f"🗣️ **Pinyin:** `{py}`")
@@ -153,4 +169,4 @@ for index, word in enumerate(words):
             st.write(f"💬 **Example:** {sentence}")
             if sentence and sentence != "—":
                 audio_button(sentence, "Chinese", f"sentence-{word}")
-            st.write(f"⭐ **Tip:** {info.get('spelling_tip', '—')}")
+            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {info.get('spelling_tip', '—')}")
