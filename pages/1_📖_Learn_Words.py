@@ -234,6 +234,26 @@ button[data-testid="collapsedControl"]::after {
 [data-testid="stAlert"] { background:#eff6ff !important; border-radius:16px !important; color:#111827 !important; }
 hr { border-color:#e6ddf7 !important; }
 
+/* Keep Previous and Next together, including on small touch screens. */
+.st-key-learn_item_navigation [data-testid="stHorizontalBlock"] {
+    flex-direction:row !important; flex-wrap:nowrap !important; gap:.75rem !important;
+}
+.st-key-learn_item_navigation [data-testid="stColumn"] {
+    flex:1 1 0 !important; min-width:0 !important; width:auto !important;
+}
+.item-progress {
+    text-align:center; color:#173f91 !important;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    font-size:1.3rem; font-weight:800; margin:.75rem 0;
+}
+[data-testid="stButton"] button:disabled {
+    background:#e5e7eb !important; border-color:#64748b !important;
+    color:#374151 !important; opacity:1 !important;
+    transform:none !important; box-shadow:none !important; cursor:default;
+}
+[data-testid="stButton"] button:disabled p,
+[data-testid="stButton"] button:disabled span { color:#374151 !important; }
+
 /* Keep the original native interactions and focus behavior. */
 button:focus-visible, input:focus-visible, textarea:focus-visible,
 select:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
@@ -428,13 +448,36 @@ def rename_child_profile(old_name: str, new_name: str):
     
     st.session_state.active_child = new_name
 
-    for key_prefix in ["active_week", "raw_words", "cached_analysis", "cached_analysis_version", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "cached_analysis_version", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words", "learn_item_index", "learn_item_context"]:
         old_key = f"{key_prefix}_{old_name}"
         new_key = f"{key_prefix}_{new_name}"
         if old_key in st.session_state:
             st.session_state[new_key] = st.session_state.pop(old_key)
 
     sync_child_profiles(st.session_state.children)
+
+
+def prepare_item_navigation(state: Any, child_name: str, list_title: str, items: list[str]) -> tuple[str, int]:
+    """Keep each learner's position in bounds; start at item 1 for a changed list."""
+    index_key = f"learn_item_index_{child_name}"
+    context_key = f"learn_item_context_{child_name}"
+    context = (list_title, tuple(items))
+    if state.get(context_key) != context:
+        state[index_key] = 0
+        state[context_key] = context
+    try:
+        position = int(state.get(index_key, 0))
+    except (TypeError, ValueError):
+        position = 0
+    position = max(0, min(position, max(0, len(items) - 1)))
+    state[index_key] = position
+    return index_key, position
+
+
+def move_learning_item(index_key: str, delta: int, item_count: int) -> None:
+    """Streamlit calls this before rerendering, so one click moves exactly one item."""
+    position = int(st.session_state.get(index_key, 0))
+    st.session_state[index_key] = max(0, min(position + delta, max(0, item_count - 1)))
 
 
 if "children" not in st.session_state:
@@ -526,56 +569,85 @@ if key and words and (
 
 analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
-for index, word in enumerate(words):
-    info = analysis.get(word, {})
-    lang = guess_language(word)  # Do not trust the model to classify Chinese targets.
-    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
-        audio_button(word, lang, f"audio-{word}")
-        if lang == "English":
-            syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
-            meaning = info.get('meaning') or f"The English word '{word}'."
-            sentence = info.get('sentence') or f"Please write the word '{word}' in your notebook."
-            tip = info.get('spelling_tip') or f"Break '{word}' down into smaller letter chunks to remember!"
-            
-            st.write(f"🧩 **Syllables:** {syllables}")
-            st.write(f"💡 **Meaning:** {meaning}")
-            st.write(f"💬 **Example:** {sentence}")
-            st.write(f"⭐ **Fun Memory Tip:** {tip}")
+# One item at a time: this changes presentation, not analysis or spelling rules.
+index_key, index = prepare_item_navigation(st.session_state, active_child, selected_week, words)
+st.markdown(
+    f'<div class="item-progress" role="status">Item {index + 1} of {len(words)}</div>',
+    unsafe_allow_html=True,
+)
+with st.container(key="learn_item_navigation"):
+    previous_col, next_col = st.columns(2, gap="small")
+    with previous_col:
+        st.button(
+            "← Previous",
+            key="learn_previous",
+            disabled=index == 0,
+            use_container_width=True,
+            on_click=move_learning_item,
+            args=(index_key, -1, len(words)),
+            help="Show the previous item",
+        )
+    with next_col:
+        st.button(
+            "Next →",
+            key="learn_next",
+            disabled=index == len(words) - 1,
+            use_container_width=True,
+            on_click=move_learning_item,
+            args=(index_key, 1, len(words)),
+            help="Show the next item",
+        )
+
+word = words[index]
+info = analysis.get(word, {})
+lang = guess_language(word)  # Do not trust the model to classify Chinese targets.
+with st.expander(f"Item {index + 1}:  {word} ({lang})", expanded=True):
+    audio_button(word, lang, f"audio-{word}")
+    if lang == "English":
+        syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
+        meaning = info.get('meaning') or f"The English word '{word}'."
+        sentence = info.get('sentence') or f"Please write the word '{word}' in your notebook."
+        tip = info.get('spelling_tip') or f"Break '{word}' down into smaller letter chunks to remember!"
+
+        st.write(f"🧩 **Syllables:** {syllables}")
+        st.write(f"💡 **Meaning:** {meaning}")
+        st.write(f"💬 **Example:** {sentence}")
+        st.write(f"⭐ **Fun Memory Tip:** {tip}")
+    else:
+        preset = CHINESE_MEMORY_DICT.get(word, {})
+        py = str(info.get("pinyin") or local_pinyin(word))
+        candidate_meaning = info.get("meaning")
+        if is_valid_english_meaning(candidate_meaning):
+            meaning = str(candidate_meaning).strip()
+            meaning_available = True
+        elif is_valid_english_meaning(preset.get("meaning")):
+            meaning = str(preset["meaning"]).strip()
+            meaning_available = True
         else:
-            preset = CHINESE_MEMORY_DICT.get(word, {})
-            py = str(info.get("pinyin") or local_pinyin(word))
-            candidate_meaning = info.get("meaning")
-            if is_valid_english_meaning(candidate_meaning):
-                meaning = str(candidate_meaning).strip()
-                meaning_available = True
-            elif is_valid_english_meaning(preset.get("meaning")):
-                meaning = str(preset["meaning"]).strip()
-                meaning_available = True
-            else:
-                meaning = ""
-                meaning_available = False
+            meaning = ""
+            meaning_available = False
 
-            candidate_sentence = info.get("sentence")
-            if is_valid_chinese_example(candidate_sentence, word):
-                sentence = str(candidate_sentence).strip()
-            elif is_valid_chinese_example(preset.get("sentence"), word):
-                sentence = str(preset["sentence"]).strip()
-            else:
-                sentence = ""
-            
-            default_tip = f"Notice the structure of '{word}'! Practice the stroke order step-by-step!"
-            tip = info.get('spelling_tip') or preset.get('tip') or default_tip
+        candidate_sentence = info.get("sentence")
+        if is_valid_chinese_example(candidate_sentence, word):
+            sentence = str(candidate_sentence).strip()
+        elif is_valid_chinese_example(preset.get("sentence"), word):
+            sentence = str(preset["sentence"]).strip()
+        else:
+            sentence = ""
 
-            st.write(f"🗣️ **Pinyin:** `{py}`")
-            st.write("✍️ **Stroke Order Animation:**")
-            render_hanzi_animations(word)
-            if meaning_available:
-                st.write(f"💡 **Meaning:** {meaning}")
-            if sentence:
-                st.write(f"💬 **Example:** {sentence}")
-            else:
-                st.caption("A natural example sentence could not be generated. Ask a grown-up to refresh the word details.")
-            if sentence:
-                audio_button(sentence, "Chinese", f"sentence-{word}")
-            if meaning_available:
-                st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
+        default_tip = f"Notice the structure of '{word}'! Practice the stroke order step-by-step!"
+        tip = info.get('spelling_tip') or preset.get('tip') or default_tip
+
+        st.write(f"🗣️ **Pinyin:** `{py}`")
+        st.write("✍️ **Stroke Order Animation:**")
+        render_hanzi_animations(word)
+        if meaning_available:
+            st.write(f"💡 **Meaning:** {meaning}")
+        if sentence:
+            st.write(f"💬 **Example:** {sentence}")
+        else:
+            st.caption("A natural example sentence could not be generated. Ask a grown-up to refresh the word details.")
+        if sentence:
+            audio_button(sentence, "Chinese", f"sentence-{word}")
+        if meaning_available:
+            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
