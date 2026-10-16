@@ -13,7 +13,6 @@ DEFAULT_LISTS = {
     "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
 }
 
-# Global Kid-Friendly CSS Inject
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -89,6 +88,27 @@ def delete_remote_list(title: str) -> None:
             st.error(f"Failed to sync delete to database: {e}")
 
 
+def fetch_child_profiles() -> list[str]:
+    if API_URL:
+        try:
+            resp = requests.get(API_URL, params={"action": "get_profiles"}, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+    return ["Alex", "Emma"]
+
+
+def sync_child_profiles(children: list[str]) -> None:
+    if API_URL:
+        try:
+            requests.post(API_URL, json={"action": "save_profiles", "children": children}, timeout=5)
+        except Exception as e:
+            st.error(f"Failed to sync learner profiles: {e}")
+
+
 fetched = fetch_remote_lists()
 if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
     st.session_state.archived_lists = fetched
@@ -96,7 +116,7 @@ else:
     st.session_state.archived_lists.update(fetched)
 
 if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
+    st.session_state.children = fetch_child_profiles()
 
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
@@ -120,6 +140,8 @@ def rename_child_profile(old_name: str, new_name: str):
         if old_key in st.session_state:
             st.session_state[new_key] = st.session_state.pop(old_key)
 
+    sync_child_profiles(st.session_state.children)
+
 
 with st.sidebar:
     st.subheader("👤 Who is practicing today?")
@@ -127,7 +149,7 @@ with st.sidebar:
     selected_child = st.selectbox(
         "Select Learner:",
         options=st.session_state.children,
-        index=st.session_state.children.index(st.session_state.active_child)
+        index=st.session_state.children.index(st.session_state.active_child) if st.session_state.active_child in st.session_state.children else 0
     )
     if selected_child != st.session_state.active_child:
         st.session_state.active_child = selected_child
@@ -151,6 +173,7 @@ with st.sidebar:
             if clean_name and clean_name not in st.session_state.children:
                 st.session_state.children.append(clean_name)
                 st.session_state.active_child = clean_name
+                sync_child_profiles(st.session_state.children)
                 st.success(f"Added profile for {clean_name}!")
                 st.rerun()
 
