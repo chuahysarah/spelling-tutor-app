@@ -60,26 +60,31 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     
     prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character, e.g. ['横','竖','撇','捺']; do not invent detailed paths). For Chinese phrases, give pinyin and character-specific stroke count/radical/structure/stroke-order in fields as short lists where helpful. Keep explanations age-appropriate. Unknown facts should be marked null or '不确定', not guessed. Items: """ + json.dumps(words, ensure_ascii=False)
     
-    # Direct REST API call bypassing SDK model lookup errors
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
     }
     
-    try:
-        resp = requests.post(url, json=payload, timeout=20)
-        res_data = resp.json()
-        
-        if resp.status_code != 200:
-            err_msg = res_data.get("error", {}).get("message", f"HTTP {resp.status_code}")
-            return {}, err_msg
+    # Try active Gemini models in order
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"]
+    last_err = None
 
-        text_content = res_data["candidates"][0]["content"]["parts"][0]["text"]
-        data = json.loads(text_content)
-        return (data if isinstance(data, dict) else {}), None
-    except Exception as exc:
-        return {}, str(exc)
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        try:
+            resp = requests.post(url, json=payload, timeout=20)
+            res_data = resp.json()
+            
+            if resp.status_code == 200:
+                text_content = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                data = json.loads(text_content)
+                return (data if isinstance(data, dict) else {}), None
+            else:
+                last_err = res_data.get("error", {}).get("message", f"HTTP {resp.status_code}")
+        except Exception as exc:
+            last_err = str(exc)
+
+    return {}, last_err or "Failed to connect to Gemini API."
 
 
 @st.cache_data(show_spinner=False, max_entries=128)
