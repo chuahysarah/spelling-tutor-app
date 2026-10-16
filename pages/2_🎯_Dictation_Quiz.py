@@ -31,7 +31,7 @@ def audio_button(text: str, language: str, key: str) -> None:
     try:
         st.audio(make_audio(text, lang), format="audio/mp3")
     except Exception:
-        st.caption("🔊 Audio temporary unavailable")
+        st.caption("🔊 Audio temporarily unavailable")
 
 
 def render_hanzi_animations(word: str) -> None:
@@ -53,6 +53,20 @@ def render_hanzi_animations(word: str) -> None:
 
 st.title("🎯 Step 3: Dictation Quiz")
 
+# Ensure all Session State keys are safely initialized across page switches
+if "quiz_index" not in st.session_state:
+    st.session_state.quiz_index = 0
+if "quiz_score" not in st.session_state:
+    st.session_state.quiz_score = 0
+if "quiz_checked" not in st.session_state:
+    st.session_state.quiz_checked = False
+if "quiz_answer" not in st.session_state:
+    st.session_state.quiz_answer = ""
+if "mastered_words" not in st.session_state:
+    st.session_state.mastered_words = set()
+if "unfamiliar_words" not in st.session_state:
+    st.session_state.unfamiliar_words = set()
+
 raw_words = st.session_state.get("raw_words", "")
 if not raw_words:
     st.info("👆 Please go to the Home page to add your spelling list first!")
@@ -62,15 +76,16 @@ if "quiz_words" not in st.session_state or not st.session_state.quiz_words:
     st.session_state.quiz_words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
 
 active_quiz_words = st.session_state.quiz_words
-idx = st.session_state.get("quiz_index", 0)
+idx = st.session_state.quiz_index
 
 if idx >= len(active_quiz_words):
     st.balloons()
-    st.success(f"🎉 Quiz finished! Final Score: {st.session_state.get('quiz_score', 0)} / {len(active_quiz_words)}")
+    st.success(f"🎉 Quiz finished! Final Score: {st.session_state.quiz_score} / {len(active_quiz_words)}")
     if st.button("🔄 Restart Quiz", type="primary"):
         st.session_state.quiz_index = 0
         st.session_state.quiz_score = 0
         st.session_state.quiz_checked = False
+        st.session_state.quiz_answer = ""
         st.rerun()
 else:
     target = active_quiz_words[idx]
@@ -84,6 +99,7 @@ else:
         if is_chinese:
             st.caption(f"Pinyin: {local_pinyin(target)}")
 
+        # Chinese Handwriting Mode
         if is_chinese:
             st.markdown("✍️ **Write your answer:**")
             st_canvas(
@@ -98,36 +114,52 @@ else:
                 key=f"canvas-pad-{idx}",
             )
             
-            if not st.session_state.get("quiz_checked", False):
-                if st.button("👁️ Check My Handwriting", type="primary"):
+            if not st.session_state.quiz_checked:
+                if st.button("👁️ Check My Handwriting", type="primary", key=f"btn-check-{idx}"):
                     st.session_state.quiz_checked = True
                     st.rerun()
+        
+        # English Type-In Mode
         else:
             with st.form(f"quiz-form-{idx}"):
-                answer = st.text_input("Type your answer:")
-                if st.form_submit_button("Check Answer"):
-                    st.session_state.quiz_checked = True
-                    if answer.strip().casefold() == target.casefold():
-                        st.session_state.quiz_score = st.session_state.get("quiz_score", 0) + 1
-                    st.rerun()
+                answer = st.text_input("Type your answer:", disabled=st.session_state.quiz_checked)
+                check_submitted = st.form_submit_button("Check Answer ⭐", type="primary", disabled=st.session_state.quiz_checked)
+                
+            if check_submitted:
+                st.session_state.quiz_answer = answer.strip()
+                st.session_state.quiz_checked = True
+                if st.session_state.quiz_answer.casefold() == target.casefold():
+                    st.session_state.quiz_score += 1
+                st.rerun()
 
-        if st.session_state.get("quiz_checked", False):
+        # Revealed Answer & Self-Grading Area
+        if st.session_state.quiz_checked:
             if is_chinese:
                 st.info(f"✨ Correct Character: **{target}**")
                 render_hanzi_animations(target)
                 
                 col_yes, col_no = st.columns(2)
-                if col_yes.button("I got it right! ✅"):
-                    st.session_state.quiz_score = st.session_state.get("quiz_score", 0) + 1
+                if col_yes.button("I got it right! ✅", key=f"btn-correct-{idx}"):
+                    st.session_state.quiz_score += 1
+                    st.session_state.mastered_words.add(target)
+                    st.session_state.unfamiliar_words.discard(target)
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.rerun()
-                if col_no.button("Need practice ❌"):
+                if col_no.button("Need practice ❌", key=f"btn-wrong-{idx}"):
+                    st.session_state.unfamiliar_words.add(target)
+                    st.session_state.mastered_words.discard(target)
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
                     st.rerun()
             else:
-                if st.button("Next Word ➡️"):
+                if st.session_state.quiz_answer.casefold() == target.casefold():
+                    st.success("🎉 Correct! Fantastic job!")
+                else:
+                    st.error(f"Almost! The correct spelling is: **{target}**")
+                    
+                if st.button("Next Word ➡️", type="primary", key=f"btn-next-{idx}"):
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_checked = False
+                    st.session_state.quiz_answer = ""
                     st.rerun()
