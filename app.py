@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import re
 import requests
 import streamlit as st
 
@@ -14,26 +12,6 @@ DEFAULT_LISTS = {
     "Week 1: School & Friends": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
     "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
 }
-
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
-.hero {
-    padding: 1.5rem; 
-    border-radius: 24px; 
-    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
-    border: 3px solid #fde047;
-    text-align: center;
-    margin-bottom: 1.5rem;
-}
-.hero h1 { color: #0284c7; margin: 0; }
-</style>
-<div class="hero">
-    <h1>🌟 Magic Spelling World! ✏️</h1>
-    <div>Listen, practice writing, and become a spelling star!</div>
-</div>
-""", unsafe_allow_html=True)
 
 
 def fetch_remote_lists() -> dict[str, str]:
@@ -65,75 +43,112 @@ def delete_remote_list(title: str) -> None:
             st.error(f"Failed to sync delete to database: {e}")
 
 
-def normalize_words(raw: str) -> list[str]:
-    seen: set[str] = set()
-    result = []
-    for line in raw.replace("，", "\n").replace(",", "\n").splitlines():
-        item = line.strip()
-        if item and item.casefold() not in seen:
-            seen.add(item.casefold())
-            result.append(item)
-    return result
-
-
+# Initialize Global Lists
 fetched = fetch_remote_lists()
 if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
     st.session_state.archived_lists = fetched
 else:
     st.session_state.archived_lists.update(fetched)
 
-if "active_week" not in st.session_state or st.session_state.active_week not in st.session_state.archived_lists:
-    if st.session_state.archived_lists:
-        st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
-    else:
-        st.session_state.active_week = ""
+# Initialize Multi-Child Profiles
+if "children" not in st.session_state:
+    st.session_state.children = ["Alex", "Emma"]
 
-if "raw_words" not in st.session_state or not st.session_state.raw_words:
-    st.session_state.raw_words = st.session_state.archived_lists.get(st.session_state.active_week, "")
-
-if "mastered_words" not in st.session_state:
-    st.session_state.mastered_words = set()
-if "unfamiliar_words" not in st.session_state:
-    st.session_state.unfamiliar_words = set()
+if "active_child" not in st.session_state:
+    st.session_state.active_child = st.session_state.children[0]
 
 if "parent_unlocked" not in st.session_state:
     st.session_state.parent_unlocked = False
 
+# Sidebar Child Profile Selector
 with st.sidebar:
-    st.subheader("👨‍👩‍👧 For Grown-Ups")
-    api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value="")
-    if api_key_input:
-        st.session_state.api_key = api_key_input.strip()
-
-st.subheader("🎒 Step 1: Select Your Week!")
-
-if st.session_state.archived_lists:
-    options_list = list(st.session_state.archived_lists.keys())
-    curr_index = options_list.index(st.session_state.active_week) if st.session_state.active_week in options_list else 0
-    selected_week = st.selectbox(
-        "Choose which week you want to practice today:",
-        options=options_list,
-        index=curr_index
+    st.subheader("👤 Who is practicing today?")
+    
+    selected_child = st.selectbox(
+        "Select Learner:",
+        options=st.session_state.children,
+        index=st.session_state.children.index(st.session_state.active_child)
     )
-
-    if selected_week != st.session_state.active_week:
-        st.session_state.active_week = selected_week
-        st.session_state.raw_words = st.session_state.archived_lists[selected_week]
-        st.session_state.quiz_words = normalize_words(st.session_state.raw_words)
-        st.session_state.quiz_index = 0
-        st.session_state.quiz_score = 0
-        st.session_state.quiz_checked = False
-        st.session_state.cached_analysis = {}
+    if selected_child != st.session_state.active_child:
+        st.session_state.active_child = selected_child
         st.rerun()
 
-    st.info(f"📍 Active Practice List: **{st.session_state.active_week}**")
-else:
-    st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
+    with st.expander("➕ Add New Learner", expanded=False):
+        new_child_name = st.text_input("Child's Name:", placeholder="e.g., Lucas")
+        if st.button("Add Learner Profile", type="primary", use_container_width=True):
+            clean_name = new_child_name.strip()
+            if clean_name and clean_name not in st.session_state.children:
+                st.session_state.children.append(clean_name)
+                st.session_state.active_child = clean_name
+                st.success(f"Added profile for {clean_name}!")
+                st.rerun()
 
+active_child = st.session_state.active_child
+
+# App Hero Banner with Dynamic Greeting
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+html, body, [class*="css"] {{ font-family: 'Fredoka', cursive, sans-serif; }}
+.hero {{
+    padding: 2rem 1.5rem; 
+    border-radius: 24px; 
+    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
+    border: 3px solid #fde047;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}}
+.hero h1 {{ color: #0284c7; margin-bottom: 0.5rem; font-size: 2.2rem; }}
+.hero p {{ color: #334155; font-size: 1.1rem; margin: 0; }}
+.action-card {{
+    padding: 1.2rem;
+    border-radius: 16px;
+    border: 2px solid #e2e8f0;
+    text-align: center;
+    background: #ffffff;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+}}
+</style>
+<div class="hero">
+    <h1>👋 Hi {active_child}! Welcome to Magic Spelling World! ✏️</h1>
+    <p>Listen, practice handwriting, and master Chinese & English spelling today!</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Kid-Friendly Activity Hub Navigation
+st.write(f"### 🚀 What would **{active_child}** like to do?")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("""
+    <div class="action-card">
+        <h3>📖 Learn Words</h3>
+        <p>Explore meanings, pinyin, stroke orders & memory tricks!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.write("")
+    if st.button(f"👉 Learn Words for {active_child}", type="primary", use_container_width=True):
+        st.switch_page("pages/1_📖_Learn_Words.py")
+
+with col2:
+    st.markdown("""
+    <div class="action-card">
+        <h3>🎯 Dictation Quiz</h3>
+        <p>Listen to audio & test your handwriting with AI auto-grading!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.write("")
+    if st.button(f"👉 Start Dictation Quiz", type="primary", use_container_width=True):
+        st.switch_page("pages/2_🎯_Dictation_Quiz.py")
+
+st.divider()
+
+# Parent Management Section (PIN Locked)
 PARENT_PIN = "6666"
 
 with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
-    st.caption("Grown-ups only! Enter PIN to unlock management controls.")
+    st.caption("Grown-ups only! Enter PIN to add, update, or delete spelling lists.")
 
     if not st.session_state.parent_unlocked:
         entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="pin_entry_field")
@@ -150,9 +165,10 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
 
         st.write("---")
         
+        # Add or Update List
         st.write("### ➕ Add or Update List")
-        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
-        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
+        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 5: Animals & Weather")
+        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n事情\n生日")
         
         if st.button("💾 Save List to Google Sheets", type="primary"):
             title_clean = new_week_title.strip()
@@ -160,22 +176,15 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
             if title_clean and words_clean:
                 st.session_state.archived_lists[title_clean] = words_clean
                 save_remote_list(title_clean, words_clean)
-                
-                st.session_state.active_week = title_clean
-                st.session_state.raw_words = words_clean
-                st.session_state.quiz_words = normalize_words(words_clean)
-                st.session_state.quiz_index = 0
-                st.session_state.quiz_score = 0
-                st.session_state.quiz_checked = False
-                st.session_state.cached_analysis = {}
-
                 st.session_state.parent_unlocked = False
+                st.success(f"Saved '{title_clean}' successfully!")
                 st.rerun()
             else:
                 st.warning("Please enter both a title and words before saving.")
 
         st.divider()
 
+        # Delete List
         st.write("### 🗑️ Delete an Existing List")
         if st.session_state.archived_lists:
             list_to_delete = st.selectbox(
@@ -186,21 +195,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
             if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
                 del st.session_state.archived_lists[list_to_delete]
                 delete_remote_list(list_to_delete)
-                
-                if list_to_delete == st.session_state.active_week:
-                    if st.session_state.archived_lists:
-                        st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
-                        st.session_state.raw_words = st.session_state.archived_lists[st.session_state.active_week]
-                    else:
-                        st.session_state.active_week = ""
-                        st.session_state.raw_words = ""
-                    st.session_state.cached_analysis = {}
-
                 st.session_state.parent_unlocked = False
                 st.rerun()
         else:
             st.caption("No archived lists to delete.")
-
-words = normalize_words(st.session_state.raw_words)
-if words:
-    st.success(f"✨ Currently loaded **{len(words)} word(s)** for {st.session_state.active_week}. Select '📖 Learn Words' or '🎯 Dictation Quiz' in the sidebar to begin!")
