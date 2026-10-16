@@ -1,5 +1,8 @@
-streamlit>=1.30.0
+streamlit
 requests
 gTTS
 pypinyin
+pillow
 streamlit-drawable-canvas
+google-generativeai
+numpy
