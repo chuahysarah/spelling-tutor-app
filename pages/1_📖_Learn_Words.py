@@ -20,7 +20,6 @@ DEFAULT_LISTS = {
     "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
 }
 
-# Built-in offline memory tricks & meanings for common Chinese characters
 CHINESE_MEMORY_DICT = {
     "事情": {
         "meaning": "Matters, affairs, or things to do (事情/任务).",
@@ -76,21 +75,41 @@ h3 { font-size: 1.7rem !important; color: #0f766e !important; }
 """, unsafe_allow_html=True)
 
 
-def fetch_available_lists() -> dict[str, str]:
-    if "archived_lists" in st.session_state and st.session_state.archived_lists:
-        return st.session_state.archived_lists
-
+def fetch_available_lists(child_name: str = "") -> dict[str, str]:
     if API_URL:
         try:
-            resp = requests.get(API_URL, params={"action": "get_lists"}, allow_redirects=True, timeout=8)
+            params = {"action": "get_lists"}
+            if child_name:
+                params["child_name"] = child_name
+            resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict) and data:
-                    st.session_state.archived_lists = data
                     return data
         except Exception:
             pass
     return DEFAULT_LISTS
+
+
+def fetch_child_profiles() -> list[str]:
+    if API_URL:
+        try:
+            resp = requests.get(API_URL, params={"action": "get_profiles"}, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+    return ["Alex", "Emma"]
+
+
+def sync_child_profiles(children: list[str]) -> None:
+    if API_URL:
+        try:
+            requests.post(API_URL, json={"action": "save_profiles", "children": children}, timeout=5)
+        except Exception as e:
+            st.error(f"Failed to sync profiles: {e}")
 
 
 def guess_language(text: str) -> str:
@@ -201,9 +220,11 @@ def rename_child_profile(old_name: str, new_name: str):
         if old_key in st.session_state:
             st.session_state[new_key] = st.session_state.pop(old_key)
 
+    sync_child_profiles(st.session_state.children)
+
 
 if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
+    st.session_state.children = fetch_child_profiles()
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
 
@@ -212,7 +233,7 @@ with st.sidebar:
     selected_child = st.selectbox(
         "Current Child:",
         options=st.session_state.children,
-        index=st.session_state.children.index(st.session_state.active_child)
+        index=st.session_state.children.index(st.session_state.active_child) if st.session_state.active_child in st.session_state.children else 0
     )
     if selected_child != st.session_state.active_child:
         st.session_state.active_child = selected_child
@@ -233,7 +254,7 @@ active_child = st.session_state.active_child
 
 st.title(f"📖 Hi {active_child}! Let's Learn Our Words!")
 
-available_lists = fetch_available_lists()
+available_lists = fetch_available_lists(active_child)
 list_titles = list(available_lists.keys())
 
 current_active = st.session_state.get(f"active_week_{active_child}", "")
@@ -243,68 +264,70 @@ if current_active not in list_titles and list_titles:
 
 default_idx = list_titles.index(st.session_state[f"active_week_{active_child}"]) if st.session_state[f"active_week_{active_child}"] in list_titles else 0
 
-selected_week = st.selectbox(
-    f"📚 Select Weekly List for {active_child}:",
-    options=list_titles,
-    index=default_idx
-)
+if list_titles:
+    selected_week = st.selectbox(
+        f"📚 Select Weekly List for {active_child}:",
+        options=list_titles,
+        index=default_idx
+    )
 
-if selected_week != st.session_state.get(f"active_week_{active_child}"):
-    st.session_state[f"active_week_{active_child}"] = selected_week
-    st.session_state[f"raw_words_{active_child}"] = available_lists[selected_week]
-    st.session_state[f"cached_analysis_{active_child}"] = {}
-    st.rerun()
+    if selected_week != st.session_state.get(f"active_week_{active_child}"):
+        st.session_state[f"active_week_{active_child}"] = selected_week
+        st.session_state[f"raw_words_{active_child}"] = available_lists[selected_week]
+        st.session_state[f"cached_analysis_{active_child}"] = {}
+        st.rerun()
 
-raw_words = st.session_state.get(f"raw_words_{active_child}", "")
-words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
+    raw_words = st.session_state.get(f"raw_words_{active_child}", "")
+    words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
 
-if not words:
-    st.warning("⚠️ No words found in the selected list. Please choose a different list above!")
-    st.stop()
+    if not words:
+        st.warning(f"⚠️ No words found in this list for {active_child}.")
+        st.stop()
 
-if f"cached_analysis_{active_child}" not in st.session_state:
-    st.session_state[f"cached_analysis_{active_child}"] = {}
+    if f"cached_analysis_{active_child}" not in st.session_state:
+        st.session_state[f"cached_analysis_{active_child}"] = {}
 
-key = get_api_key()
+    key = get_api_key()
 
-if key and not st.session_state.get(f"cached_analysis_{active_child}") and words:
-    with st.spinner(f"✨ Loading word details for {active_child}..."):
-        data, err = get_analysis(words, key)
-        if not err and data:
-            st.session_state[f"cached_analysis_{active_child}"] = data
+    if key and not st.session_state.get(f"cached_analysis_{active_child}") and words:
+        with st.spinner(f"✨ Loading word details for {active_child}..."):
+            data, err = get_analysis(words, key)
+            if not err and data:
+                st.session_state[f"cached_analysis_{active_child}"] = data
 
-analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
+    analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
-for index, word in enumerate(words):
-    info = analysis.get(word, {})
-    lang = str(info.get("language") or guess_language(word))
-    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
-        audio_button(word, lang, f"audio-{word}")
-        if lang == "English":
-            syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
-            meaning = info.get('meaning') or f"The English word '{word}'."
-            sentence = info.get('sentence') or f"Please write the word '{word}' in your notebook."
-            tip = info.get('spelling_tip') or f"Break '{word}' down into smaller letter chunks to remember!"
-            
-            st.write(f"🧩 **Syllables:** {syllables}")
-            st.write(f"💡 **Meaning:** {meaning}")
-            st.write(f"💬 **Example:** {sentence}")
-            st.write(f"⭐ **Fun Memory Tip:** {tip}")
-        else:
-            preset = CHINESE_MEMORY_DICT.get(word, {})
-            py = str(info.get("pinyin") or local_pinyin(word))
-            meaning = info.get('meaning') or preset.get('meaning') or f"Chinese word / 词语: {word}"
-            sentence = info.get("sentence") or preset.get('sentence') or f"今天我们要学习 '{word}' 这个词。"
-            
-            # Character radical memory breakdown fallback
-            default_tip = f"Notice the structure of '{word}'! Practice the stroke order step-by-step!"
-            tip = info.get('spelling_tip') or preset.get('tip') or default_tip
+    for index, word in enumerate(words):
+        info = analysis.get(word, {})
+        lang = str(info.get("language") or guess_language(word))
+        with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
+            audio_button(word, lang, f"audio-{word}")
+            if lang == "English":
+                syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
+                meaning = info.get('meaning') or f"The English word '{word}'."
+                sentence = info.get('sentence') or f"Please write the word '{word}' in your notebook."
+                tip = info.get('spelling_tip') or f"Break '{word}' down into smaller letter chunks to remember!"
+                
+                st.write(f"🧩 **Syllables:** {syllables}")
+                st.write(f"💡 **Meaning:** {meaning}")
+                st.write(f"💬 **Example:** {sentence}")
+                st.write(f"⭐ **Fun Memory Tip:** {tip}")
+            else:
+                preset = CHINESE_MEMORY_DICT.get(word, {})
+                py = str(info.get("pinyin") or local_pinyin(word))
+                meaning = info.get('meaning') or preset.get('meaning') or f"Chinese word / 词语: {word}"
+                sentence = info.get("sentence") or preset.get('sentence') or f"今天我们要学习 '{word}' 这个词。"
+                
+                default_tip = f"Notice the structure of '{word}'! Practice the stroke order step-by-step!"
+                tip = info.get('spelling_tip') or preset.get('tip') or default_tip
 
-            st.write(f"🗣️ **Pinyin:** `{py}`")
-            st.write("✍️ **Stroke Order Animation:**")
-            render_hanzi_animations(word)
-            st.write(f"💡 **Meaning:** {meaning}")
-            st.write(f"💬 **Example:** {sentence}")
-            if sentence:
-                audio_button(sentence, "Chinese", f"sentence-{word}")
-            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
+                st.write(f"🗣️ **Pinyin:** `{py}`")
+                st.write("✍️ **Stroke Order Animation:**")
+                render_hanzi_animations(word)
+                st.write(f"💡 **Meaning:** {meaning}")
+                st.write(f"💬 **Example:** {sentence}")
+                if sentence:
+                    audio_button(sentence, "Chinese", f"sentence-{word}")
+                st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
+else:
+    st.info(f"📚 No spelling lists assigned to {active_child} yet. Grown-ups can add lists on the main Home Page!")
