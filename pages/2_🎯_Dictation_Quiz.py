@@ -82,7 +82,7 @@ def speak_text(text: str):
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
     try:
-        clean_key = api_key.strip().strip("'").strip('"')
+        clean_token = api_key.strip().strip("'").strip('"')
         url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
         
         if isinstance(image_data, np.ndarray):
@@ -110,12 +110,20 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        headers = {
+        # Header strategy 1: Bearer Token Auth
+        headers_bearer = {
             "Content-Type": "application/json",
-            "x-goog-api-key": clean_key
+            "Authorization": f"Bearer {clean_token}"
         }
 
-        resp = requests.post(url, json=payload, headers=headers, timeout=12)
+        # Header strategy 2: Header Key Auth
+        headers_goog = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": clean_token
+        }
+
+        # Try Bearer
+        resp = requests.post(url, json=payload, headers=headers_bearer, timeout=12)
 
         if resp.status_code == 200:
             res_json = resp.json()
@@ -125,8 +133,19 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
                 parsed = json.loads(match.group())
                 return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
             return True, "Handwriting evaluated!"
-        else:
-            return False, f"API Error ({resp.status_code}): {resp.text}"
+
+        # Fallback to x-goog-api-key header
+        resp_fb = requests.post(url, json=payload, headers=headers_goog, timeout=12)
+        if resp_fb.status_code == 200:
+            res_json = resp_fb.json()
+            text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
+            match = re.search(r'\{.*\}', text_resp, re.DOTALL)
+            if match:
+                parsed = json.loads(match.group())
+                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
+            return True, "Handwriting evaluated!"
+            
+        return False, f"API Error ({resp.status_code}): {resp.text}"
     except Exception as e:
         return False, f"Error calling Gemini Vision API: {e}"
 
