@@ -3,5 +3,3 @@ requests
 gTTS
 pypinyin
 streamlit-drawable-canvas
-st-gsheets-connection
-pandas
