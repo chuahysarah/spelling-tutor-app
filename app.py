@@ -255,14 +255,21 @@ def show_analysis(word: str, info: dict[str, Any]) -> None:
         py = str(info.get("pinyin") or local_pinyin(word))
         st.markdown(f"🗣️ **拼音 Pinyin:** `{py}`")
         if py:
-            st.caption("Press play to listen to how it sounds!")
+            st.caption("Listen to the word:")
             audio_button(py, "Chinese", f"pinyin-{word}")
             
         st.markdown("✍️ **Stroke Order Animation (动画笔顺):**")
         render_hanzi_animations(word)
 
         st.markdown(f"💡 **意思 Meaning:** {info.get('meaning', '—')}")
-        st.markdown(f"💬 **例句 Example:** {info.get('sentence', '—')}")
+        
+        # Example Sentence with dedicated audio playback button
+        sentence = info.get("sentence", "—")
+        st.markdown(f"💬 **例句 Example:** {sentence}")
+        if sentence and sentence != "—":
+            st.caption("🔊 Listen to the whole example sentence:")
+            audio_button(sentence, "Chinese", f"sentence-audio-{word}")
+
         st.markdown(f"🔢 **总笔画 Stroke count:** {info.get('stroke_count') or 'Please verify with your class dictionary'}")
         st.markdown(f"🌱 **部首 Radical:** {info.get('radical') or 'Please verify with your class dictionary'}")
         st.markdown(f"🏗️ **结构 Structure:** {info.get('structure') or '—'}")
