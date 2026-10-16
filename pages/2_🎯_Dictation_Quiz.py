@@ -30,25 +30,23 @@ def get_gemini_key() -> str:
 
 GEMINI_API_KEY = get_gemini_key()
 
-DEFAULT_LISTS = {
-    "Week 1: Primary Chinese & English": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
-    "Week 2: Advanced Chinese": "事情\n学习\n朋友\n高兴",
-    "Week 3: English Spelling": "together\nbecause\nbeautiful\ndifferent"
-}
-
 
 def fetch_available_lists() -> dict[str, str]:
-    """Fetches word lists from Google Sheets backend API with local fallback."""
+    """Fetches word lists from session state first, then Google Sheets backend API."""
+    if "archived_lists" in st.session_state and st.session_state.archived_lists:
+        return st.session_state.archived_lists
+
     if API_URL:
         try:
             resp = requests.get(f"{API_URL}?action=get_lists", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict) and data:
+                    st.session_state.archived_lists = data
                     return data
         except Exception:
             pass
-    return DEFAULT_LISTS
+    return {}
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
@@ -153,9 +151,12 @@ def reset_quiz_state():
 
 st.title("🎯 Spelling & Chinese Dictation Quiz")
 
-# --- INSTANT LIST INITIALIZATION ---
 available_lists = fetch_available_lists()
 list_titles = list(available_lists.keys())
+
+if not list_titles:
+    st.warning("⚠️ No spelling lists available. Please create a list on the home page first!")
+    st.stop()
 
 current_active = st.session_state.get("active_week", "")
 if current_active not in list_titles and list_titles:
@@ -172,7 +173,6 @@ selected_list_title = st.selectbox(
     help="Choose the weekly list you want to practice now."
 )
 
-# Handle list change on selection
 if selected_list_title != st.session_state.get("active_week"):
     st.session_state.active_week = selected_list_title
     st.session_state.raw_words = available_lists[selected_list_title]
@@ -237,7 +237,6 @@ if st.button("🔊 Play Word Sound", type="secondary"):
 
 st.write("---")
 
-# Dedicated Drawing Canvas
 st.subheader("✏️ Handwriting Practice Pad")
 st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
 
@@ -254,7 +253,6 @@ canvas_result = st_canvas(
     key=f"canvas_{selected_list_title}_{current_idx}"
 )
 
-# Render text input ONLY for English spelling lists
 if not is_chinese:
     user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{selected_list_title}_{current_idx}")
 
