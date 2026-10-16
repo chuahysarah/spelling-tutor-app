@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="Magic Spelling World ✏️",
     page_icon="⭐",
     layout="centered",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
@@ -17,9 +17,10 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
 :root {
-    --ink:#26324b; --body:#34415c; --blue:#3158b8; --blue-dark:#24448f;
-    --purple:#6746bd; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0;
-    --sky:#e6f4ff; --cream:#fffaf0; --surface:#ffffff; --focus:#ffc94a;
+    --ink:#111827; --body:#1f2937; --blue:#173f91; --blue-dark:#12336f;
+    --purple:#4b1d82; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0;
+    --sky:#e6f4ff; --cream:#fffefa; --surface:#ffffff; --focus:#ffc000;
+    --control-border:#64748b;
 }
 html, body, [class*="css"], button, input, select, textarea {
     font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
@@ -33,8 +34,19 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 
 /* Comfortable default text sizes and clearly differentiated headings. */
 p, li, [data-testid="stMarkdownContainer"] p {
-    color:var(--body); font-size:1.125rem; line-height:1.5;
+    color:var(--body) !important; font-size:1.125rem; line-height:1.5; font-weight:500;
 }
+
+/* Make Streamlit-rendered supporting text consistently dark and fully opaque. */
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stCaptionContainer"],
+[data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] label {
+    color:#1f2937 !important;
+    opacity:1 !important;
+}
+[data-testid="stCaptionContainer"] { font-size:1rem !important; font-weight:500; }
 h1, [data-testid="stMarkdownContainer"] h1 {
     color:var(--blue) !important; font-size:2rem !important;
     line-height:1.2; font-weight:700 !important; letter-spacing:-.02em;
@@ -44,13 +56,13 @@ h2, [data-testid="stMarkdownContainer"] h2 {
     line-height:1.25; font-weight:700 !important;
 }
 h3, [data-testid="stMarkdownContainer"] h3 {
-    color:#126b5d !important; font-size:1.375rem !important;
+    color:#07594f !important; font-size:1.375rem !important;
     line-height:1.3; font-weight:700 !important;
 }
 [data-testid="stWidgetLabel"] p,
 [data-testid="stWidgetLabel"] label {
     color:var(--ink) !important; font-size:1.125rem !important;
-    line-height:1.4; font-weight:600;
+    line-height:1.4; font-weight:700;
 }
 
 /* High-contrast primary buttons; colorful gradients remain in supporting surfaces. */
@@ -79,27 +91,27 @@ h3, [data-testid="stMarkdownContainer"] h3 {
     background:linear-gradient(165deg,#e6f4ff 0%,#f0eaff 55%,#fff0e8 100%) !important;
     border-right:3px solid #d6e5ff !important;
 }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:var(--body); }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:var(--body) !important; }
 [data-testid="stSidebarCollapseButton"] button {
     min-width:2.75rem; min-height:2.75rem;
     background:linear-gradient(135deg,#ffd34f,#ffad52) !important;
-    color:var(--ink) !important; border:2px solid #efa83a !important;
+    color:var(--ink) !important; border:2px solid #6b4e00 !important;
     border-radius:12px !important;
 }
 [data-testid="stSidebar"] .stSelectbox > div > div {
-    background:#fff !important; border:2px solid #b8d9ff !important;
+    background:#fff !important; border:2px solid var(--control-border) !important;
     border-radius:16px !important;
 }
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea,
 [data-testid="stSelectbox"] > div > div {
     min-height:2.75rem; border-radius:14px !important;
-    border:2px solid #bdd8fa !important; background:#fff !important;
-    color:var(--ink) !important; font-size:1.125rem !important;
+    border:2px solid var(--control-border) !important; background:#fff !important;
+    color:var(--ink) !important; font-size:1.125rem !important; font-weight:600;
 }
 [data-testid="stTextInput"] input::placeholder,
 [data-testid="stTextArea"] textarea::placeholder {
-    color:#526078 !important; opacity:1;
+    color:#374151 !important; opacity:1;
 }
 [data-testid="stExpander"] {
     background:rgba(255,255,255,.92); border:2px solid #e5dcfb !important;
@@ -120,7 +132,7 @@ hr { border-color:#e6ddf7 !important; }
     color:var(--blue) !important; margin-bottom:.55rem;
     font-size:2.5rem !important;
 }
-.hero p { color:var(--ink) !important; font-size:1.2rem; margin:0; }
+.hero p { color:var(--ink) !important; font-size:1.2rem; font-weight:600; margin:0; }
 .action-card {
     padding:1.45rem 1.2rem; min-height:155px; border-radius:24px;
     border:2px solid #fff; text-align:center;
@@ -128,7 +140,7 @@ hr { border-color:#e6ddf7 !important; }
     box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff;
 }
 .action-card h3 { font-size:1.5rem !important; color:var(--blue) !important; margin-bottom:.4rem; }
-.action-card p { font-size:1.05rem; color:var(--body); }
+.action-card p { font-size:1.05rem; color:var(--body) !important; }
 
 /* Visible keyboard focus and reduced-motion support. */
 :where(button,input,textarea,select,a,[tabindex]):focus-visible {
@@ -136,12 +148,43 @@ hr { border-color:#e6ddf7 !important; }
     box-shadow:0 0 0 2px var(--ink) !important;
 }
 @media (max-width:640px) {
-    [data-testid="stMainBlockContainer"] { padding:1.1rem 1rem 2rem; }
-    .hero { padding:1.6rem 1rem; border-radius:22px; }
-    .hero h1 { font-size:2rem !important; }
-    p, li, [data-testid="stMarkdownContainer"] p { font-size:1.0625rem; }
+    [data-testid="stMainBlockContainer"] { padding:.75rem .75rem 1.5rem; }
+
+    /* Put home-page action cards in a single, readable column. */
+    [data-testid="stHorizontalBlock"] {
+        flex-direction:column !important;
+        gap:.75rem !important;
+    }
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        width:100% !important;
+        min-width:100% !important;
+        flex:1 1 100% !important;
+    }
+
+    .hero { padding:1.25rem 1rem; margin-bottom:1rem; border-radius:20px; }
+    .hero h1 { font-size:clamp(1.6rem,7vw,2rem) !important; line-height:1.15; }
+    .hero p { font-size:1rem; line-height:1.45; }
+    .action-card { min-height:auto; padding:1rem; border-radius:18px; }
+
+    /* Full-width, easy-to-tap actions and fields on phones. */
+    .stButton > button,
+    [data-testid="stFormSubmitButton"] button {
+        width:100%;
+        min-height:48px;
+        font-size:1.0625rem !important;
+    }
     [data-testid="stTextInput"] input,
-    [data-testid="stTextArea"] textarea { font-size:1.125rem !important; }
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stSelectbox"] [role="combobox"] {
+        min-height:48px;
+        font-size:18px !important;
+    }
+    [data-testid="stExpander"] summary { min-height:48px; }
+    p, li, [data-testid="stMarkdownContainer"] p {
+        font-size:1.0625rem !important;
+        line-height:1.45;
+        font-weight:500;
+    }
 }
 @media (prefers-reduced-motion:reduce) {
     *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
