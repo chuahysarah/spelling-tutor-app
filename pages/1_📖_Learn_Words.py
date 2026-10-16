@@ -23,7 +23,6 @@ def local_pinyin(text: str) -> str:
 
 
 def get_api_key() -> str:
-    """Prioritizes Streamlit Cloud Secrets over stale session state inputs."""
     key = ""
     if "GEMINI_API_KEY" in st.secrets:
         key = str(st.secrets["GEMINI_API_KEY"])
@@ -63,7 +62,6 @@ Items: """ + json.dumps(words, ensure_ascii=False)
         "x-goog-api-key": api_key
     }
 
-    # Try stable endpoints in sequence
     urls_to_try = [
         "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
         f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
@@ -125,7 +123,6 @@ with st.sidebar:
 
 st.title("📖 Step 2: Let's Learn Our Words!")
 
-# Week Switcher Bar
 if "archived_lists" in st.session_state and st.session_state.archived_lists:
     options_list = list(st.session_state.archived_lists.keys())
     curr_index = options_list.index(st.session_state.get("active_week", options_list[0])) if st.session_state.get("active_week") in options_list else 0
