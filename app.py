@@ -44,11 +44,14 @@ if "archived_lists" not in st.session_state:
         "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
     }
 
-if "active_week" not in st.session_state:
-    st.session_state.active_week = "Week 1: School & Friends"
+if "active_week" not in st.session_state or st.session_state.active_week not in st.session_state.archived_lists:
+    if st.session_state.archived_lists:
+        st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
+    else:
+        st.session_state.active_week = ""
 
 if "raw_words" not in st.session_state:
-    st.session_state.raw_words = st.session_state.archived_lists[st.session_state.active_week]
+    st.session_state.raw_words = st.session_state.archived_lists.get(st.session_state.active_week, "")
 
 if "mastered_words" not in st.session_state:
     st.session_state.mastered_words = set()
@@ -64,28 +67,33 @@ with st.sidebar:
 
 # Child Section: Select Active Weekly List
 st.subheader("🎒 Step 1: Select Your Week!")
-selected_week = st.selectbox(
-    "Choose which week you want to practice today:",
-    options=list(st.session_state.archived_lists.keys()),
-    index=list(st.session_state.archived_lists.keys()).index(st.session_state.active_week)
-)
 
-# Load selected weekly list into active practice session
-if selected_week != st.session_state.active_week:
-    st.session_state.active_week = selected_week
-    st.session_state.raw_words = st.session_state.archived_lists[selected_week]
-    st.session_state.quiz_words = normalize_words(st.session_state.raw_words)
-    st.session_state.quiz_index = 0
-    st.session_state.quiz_score = 0
-    st.session_state.quiz_checked = False
-    st.session_state.cached_analysis = {}
-    st.rerun()
+if st.session_state.archived_lists:
+    options_list = list(st.session_state.archived_lists.keys())
+    curr_index = options_list.index(st.session_state.active_week) if st.session_state.active_week in options_list else 0
+    selected_week = st.selectbox(
+        "Choose which week you want to practice today:",
+        options=options_list,
+        index=curr_index
+    )
 
-st.info(f"📍 Active Practice List: **{st.session_state.active_week}**")
+    if selected_week != st.session_state.active_week:
+        st.session_state.active_week = selected_week
+        st.session_state.raw_words = st.session_state.archived_lists[selected_week]
+        st.session_state.quiz_words = normalize_words(st.session_state.raw_words)
+        st.session_state.quiz_index = 0
+        st.session_state.quiz_score = 0
+        st.session_state.quiz_checked = False
+        st.session_state.cached_analysis = {}
+        st.rerun()
 
-# Parent Section: Pre-populate or Add New Weekly Lists
-with st.expander("🛠️ Parent Area: Add or Edit Weekly Spelling Lists", expanded=False):
-    st.write("Pre-populate weekly lists here so your child can easily pick their week above!")
+    st.info(f"📍 Active Practice List: **{st.session_state.active_week}**")
+else:
+    st.warning("No spelling lists available. Add a new list in the Parent Area below!")
+
+# Parent Section: Add, Edit, or Delete Lists
+with st.expander("🛠️ Parent Area: Manage, Edit or Delete Weekly Lists", expanded=False):
+    st.write("### ➕ Add or Update List")
     new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
     new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
     
@@ -99,10 +107,36 @@ with st.expander("🛠️ Parent Area: Add or Edit Weekly Spelling Lists", expan
             st.session_state.quiz_score = 0
             st.session_state.quiz_checked = False
             st.session_state.cached_analysis = {}
-            st.success(f"🎉 Saved '{new_week_title}' to the archive and set as active list!")
+            st.success(f"🎉 Saved '{new_week_title}' to the archive!")
             st.rerun()
         else:
-            st.warning("Please provide both a title and word list before saving.")
+            st.warning("Please enter both a title and words before saving.")
+
+    st.divider()
+
+    st.write("### 🗑️ Delete an Existing List")
+    if st.session_state.archived_lists:
+        list_to_delete = st.selectbox(
+            "Select list to delete:",
+            options=list(st.session_state.archived_lists.keys()),
+            key="delete_list_select"
+        )
+        if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
+            del st.session_state.archived_lists[list_to_delete]
+            st.success(f"Deleted '{list_to_delete}'!")
+            
+            # Reset active week if deleted
+            if list_to_delete == st.session_state.active_week:
+                if st.session_state.archived_lists:
+                    st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
+                    st.session_state.raw_words = st.session_state.archived_lists[st.session_state.active_week]
+                else:
+                    st.session_state.active_week = ""
+                    st.session_state.raw_words = ""
+                st.session_state.cached_analysis = {}
+            st.rerun()
+    else:
+        st.caption("No archived lists to delete.")
 
 words = normalize_words(st.session_state.raw_words)
 if words:
