@@ -37,7 +37,6 @@ def load_persistent_lists() -> dict[str, str]:
                 return json.load(f)
         except Exception:
             pass
-    # Default initial fallback list
     return {
         "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
         "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
@@ -63,7 +62,7 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-# Load Permanent Archive from JSON file into Session State
+# Initialize Persistent Weekly Archive in Session State
 if "archived_lists" not in st.session_state:
     st.session_state.archived_lists = load_persistent_lists()
 
@@ -114,8 +113,16 @@ if st.session_state.archived_lists:
 else:
     st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
 
-# Parent Section: PIN Locked Area
+# Parent Section: PIN Locked Area with Auto-Lock and Auto-Clear Input Keys
 PARENT_PIN = "6666"
+
+# Ensure form widget keys exist in session state so we can clear them dynamically
+if "new_week_title_key" not in st.session_state:
+    st.session_state.new_week_title_key = ""
+if "new_week_words_key" not in st.session_state:
+    st.session_state.new_week_words_key = ""
+if "parent_pin_input" not in st.session_state:
+    st.session_state.parent_pin_input = ""
 
 with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
     st.caption("Grown-ups only! Enter PIN to unlock management controls.")
@@ -123,18 +130,26 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
 
     if entered_pin == PARENT_PIN:
         st.success("🔓 Unlocked!")
+        
+        # Manual Lock Button
+        if st.button("🔒 Lock Parent Area Now", type="secondary"):
+            st.session_state.parent_pin_input = ""
+            st.rerun()
+
         st.write("---")
         
         # 1. Add or Update List
         st.write("### ➕ Add or Update List")
-        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
-        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
+        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather", key="new_week_title_key")
+        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气", key="new_week_words_key")
         
-        if st.button("💾 Save Permanently to Archive", type="primary"):
+        if st.button("💾 Save & Auto-Lock", type="primary"):
             if new_week_title.strip() and new_week_words.strip():
+                # Save to memory and JSON file
                 st.session_state.archived_lists[new_week_title.strip()] = new_week_words.strip()
-                save_persistent_lists(st.session_state.archived_lists)  # Saves to weekly_lists.json!
+                save_persistent_lists(st.session_state.archived_lists)
                 
+                # Update active session data
                 st.session_state.active_week = new_week_title.strip()
                 st.session_state.raw_words = new_week_words.strip()
                 st.session_state.quiz_words = normalize_words(new_week_words.strip())
@@ -142,6 +157,12 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 st.session_state.quiz_score = 0
                 st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
+
+                # Clear text inputs & Auto-Lock PIN input
+                st.session_state.new_week_title_key = ""
+                st.session_state.new_week_words_key = ""
+                st.session_state.parent_pin_input = ""
+                
                 st.success(f"🎉 Saved '{new_week_title}' permanently!")
                 st.rerun()
             else:
@@ -157,10 +178,9 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 options=list(st.session_state.archived_lists.keys()),
                 key="delete_list_select"
             )
-            if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
+            if st.button(f"❌ Delete '{list_to_delete}' & Auto-Lock", type="secondary"):
                 del st.session_state.archived_lists[list_to_delete]
-                save_persistent_lists(st.session_state.archived_lists)  # Save deletion to JSON!
-                st.success(f"Deleted '{list_to_delete}'!")
+                save_persistent_lists(st.session_state.archived_lists)
                 
                 if list_to_delete == st.session_state.active_week:
                     if st.session_state.archived_lists:
@@ -170,6 +190,9 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                         st.session_state.active_week = ""
                         st.session_state.raw_words = ""
                     st.session_state.cached_analysis = {}
+
+                # Auto-Lock PIN input on deletion
+                st.session_state.parent_pin_input = ""
                 st.rerun()
         else:
             st.caption("No archived lists to delete.")
