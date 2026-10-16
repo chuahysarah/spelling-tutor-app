@@ -84,7 +84,7 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             if match:
                 parsed = json.loads(match.group())
                 return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated!")
-    except Exception as e:
+    except Exception:
         pass
     return False, "Could not evaluate handwriting automatically."
 
@@ -169,7 +169,7 @@ st.caption("Write your answer using your finger, stylus, or mouse in the box bel
 
 canvas_result = st_canvas(
     fill_color="rgba(255, 255, 255, 0)",
-    stroke_width=5,
+    stroke_width=6,
     stroke_color="#000000",
     background_color="#ffffff",
     height=260,
@@ -187,23 +187,35 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Handwriting", type="primary"):
         if is_chinese:
-            img_data = None
             has_strokes = False
+            img_data = None
 
-            # Wrap in try/except to safely handle RuntimeError from streamlit-drawable-canvas
+            # 1. Check path objects in json_data
+            if canvas_result is not None and canvas_result.json_data is not None:
+                objects = canvas_result.json_data.get("objects", [])
+                if len(objects) > 0:
+                    has_strokes = True
+
+            # 2. Check image array safely if available
             try:
-                if canvas_result is not None:
+                if canvas_result is not None and canvas_result.image_data is not None:
                     img_data = canvas_result.image_data
-                    if img_data is not None and isinstance(img_data, np.ndarray) and img_data.size > 0:
-                        has_alpha_strokes = np.any(img_data[:, :, 3] > 0)
-                        has_rgb_strokes = np.any(img_data[:, :, :3] < 200)
-                        has_strokes = has_alpha_strokes or has_rgb_strokes
-            except (RuntimeError, AttributeError, Exception):
-                img_data = None
-                has_strokes = False
+                    if isinstance(img_data, np.ndarray) and img_data.size > 0:
+                        # If any pixel in the canvas is non-white (drawn stroke exists)
+                        if np.any(img_data[:, :, :3] < 200):
+                            has_strokes = True
+            except Exception:
+                pass
+
+            # Fallback: if strokes are detected via JSON objects but img_data couldn't be read directly
+            if has_strokes and img_data is None:
+                try:
+                    img_data = canvas_result.image_data
+                except Exception:
+                    img_data = None
 
             if not has_strokes or img_data is None:
-                st.warning("✏️ Please write the character on the practice pad before grading!")
+                st.warning("✏️ Drawing not detected yet! Please draw your character clearly and lift your finger/mouse before clicking Grade.")
             elif GEMINI_API_KEY:
                 with st.spinner("Analyzing Chinese handwriting..."):
                     is_correct, feedback = grade_handwriting_with_gemini(
@@ -215,7 +227,7 @@ with col1:
                         st.session_state.quiz_score += 1
                         st.session_state.mastered_words.add(target_word)
                     else:
-                        st.error(f"❌ Correct Character: **{target_word}**")
+                        st.error(f"❌ Target Character: **{target_word}**")
                         st.write(f"💬 {feedback}")
                         st.session_state.unfamiliar_words.add(target_word)
                     st.session_state.quiz_checked = True
