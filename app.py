@@ -14,6 +14,7 @@ from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
+# Child-friendly custom styling
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -190,21 +191,21 @@ def render_hanzi_animations(word: str) -> None:
     
     for i, char in enumerate(chinese_chars):
         div_id = f"target-{i}-{ord(char)}"
-        targets += f'<div id="{div_id}" style="display:inline-block; margin: 6px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);"></div>'
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff;"></div>'
         scripts += f"""
         HanziWriter.create('{div_id}', '{char}', {{
-            width: 105,
-            height: 105,
-            padding: 6,
+            width: 90,
+            height: 90,
+            padding: 4,
             showOutline: true,
-            strokeAnimationSpeed: 1,
-            delayBetweenStrokes: 150
+            strokeAnimationSpeed: 1.2,
+            delayBetweenStrokes: 100
         }}).loopCharacterAnimation();
         """
 
     chars_per_row = 5
     num_rows = (len(chinese_chars) + chars_per_row - 1) // chars_per_row
-    container_height = num_rows * 125 + 20
+    container_height = num_rows * 110 + 15
 
     html_code = f"""
     <!DOCTYPE html>
@@ -213,7 +214,7 @@ def render_hanzi_animations(word: str) -> None:
       <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
     </head>
     <body style="margin: 0; padding: 0; background: transparent;">
-      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
         {targets}
       </div>
       <script>
@@ -403,7 +404,7 @@ else:
         if st.button("🔎 Show Extra Hint", key=f"hint-{idx}"):
             st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Sound out the letters!"))
         
-        # Lightweight lag-free canvas setup
+        # Fast, static-keyed handwriting canvas
         if is_chinese:
             st.markdown("✍️ **Write your characters on the magic pad:**")
             
@@ -412,11 +413,11 @@ else:
                 stroke_width=4,
                 stroke_color="#0284c7",
                 background_color="#f8fafc",
-                height=200,
-                width=320,
+                height=180,
+                width=300,
                 drawing_mode="freedraw",
                 update_streamlit=False,
-                key="canvas-quiz-pad",
+                key="canvas-fast-pad",
             )
             st.caption("👆 Use your finger or stylus to draw!")
             
