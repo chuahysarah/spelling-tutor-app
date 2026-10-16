@@ -5,54 +5,6 @@ import streamlit as st
 
 st.set_page_config(page_title="Parent Progress Summary 📊", page_icon="📊", layout="centered")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
-
-.summary-card {
-    padding: 1.25rem;
-    border-radius: 18px;
-    background: #ffffff;
-    border: 2px solid #e2e8f0;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
-    margin-bottom: 1rem;
-}
-
-.metric-title {
-    font-size: 0.95rem;
-    color: #64748b;
-    font-weight: 600;
-}
-
-.metric-value {
-    font-size: 1.8rem;
-    color: #0284c7;
-    font-weight: 700;
-}
-
-.badge-mastered {
-    background-color: #dcfce7;
-    color: #15803d;
-    padding: 0.3rem 0.8rem;
-    border-radius: 12px;
-    font-weight: 600;
-    display: inline-block;
-    margin: 0.2rem;
-}
-
-.badge-review {
-    background-color: #fee2e2;
-    color: #b91c1c;
-    padding: 0.3rem 0.8rem;
-    border-radius: 12px;
-    font-weight: 600;
-    display: inline-block;
-    margin: 0.2rem;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.title("📊 Parent Summary & Assessment Tracker")
 st.caption("A quick overview of your child's dictation accuracy, mastered vocabulary, and revision queues.")
 
@@ -68,27 +20,21 @@ if total_words == 0:
     st.info("👆 No active spelling list found. Add a weekly list on the Home page to start tracking progress!")
     st.stop()
 
-# Key Progress Metrics
+# Key Progress Metrics using Native Streamlit Metrics
 st.subheader("📈 Overall Performance Metrics")
 
 cols = st.columns(3)
 with cols[0]:
-    st.markdown('<div class="summary-card">', unsafe_allow_html=True)
-    st.markdown('<div class="metric-title">Total Words</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-value">{total_words}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.metric(label="Total Words", value=total_words)
 
 with cols[1]:
-    st.markdown('<div class="summary-card">', unsafe_allow_html=True)
-    st.markdown('<div class="metric-title">Mastered (🌟)</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-value" style="color: #16a34a;">{len(mastered)}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.metric(label="Mastered (🌟)", value=len(mastered))
 
 with cols[2]:
-    st.markdown('<div class="summary-card">', unsafe_allow_html=True)
-    st.markdown('<div class="metric-title">Needs Practice (🔴)</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-value" style="color: #dc2626;">{len(unfamiliar)}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.metric(label="Needs Practice (🔴)", value=len(unfamiliar))
 
 # Progress Bar
 completion_rate = (len(mastered) / total_words) if total_words > 0 else 0.0
@@ -105,7 +51,7 @@ with col_a:
     st.markdown("### 🌟 Mastered Words")
     if mastered:
         for word in sorted(mastered):
-            st.markdown(f'<span class="badge-mastered">✅ {word}</span>', unsafe_allow_html=True)
+            st.success(f"✅ {word}")
     else:
         st.caption("No words marked as mastered yet.")
 
@@ -113,7 +59,7 @@ with col_b:
     st.markdown("### 🔴 Words Needing Practice")
     if unfamiliar:
         for word in sorted(unfamiliar):
-            st.markdown(f'<span class="badge-review">❌ {word}</span>', unsafe_allow_html=True)
+            st.error(f"❌ {word}")
     else:
         st.caption("Great job! No tricky words flagged right now.")
 
