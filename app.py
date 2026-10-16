@@ -114,10 +114,11 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_available_models(api_key: str) -> list[str]:
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
             models_data = resp.json().get("models", [])
             valid_models = []
@@ -150,7 +151,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
-            resp = requests.post(url, json=payload, timeout=20)
+            resp = requests.post(url, json=payload, timeout=10)
             res_data = resp.json()
             
             if resp.status_code == 200:
@@ -165,7 +166,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     return {}, last_err or "Failed to connect to Gemini API."
 
 
-@st.cache_data(show_spinner=False, max_entries=128)
+@st.cache_data(show_spinner=False, max_entries=256)
 def make_audio(text: str, lang: str) -> bytes:
     from io import BytesIO
     audio = BytesIO()
@@ -177,8 +178,8 @@ def audio_button(text: str, language: str, key: str) -> None:
     lang = "zh-CN" if language == "Chinese" else "en"
     try:
         st.audio(make_audio(text, lang), format="audio/mp3")
-    except Exception as exc:
-        st.info(f"Audio is taking a short break! ({type(exc).__name__})")
+    except Exception:
+        st.caption("🔊 Audio temporary unavailable")
 
 
 def render_hanzi_animations(word: str) -> None:
@@ -198,8 +199,8 @@ def render_hanzi_animations(word: str) -> None:
             height: 90,
             padding: 4,
             showOutline: true,
-            strokeAnimationSpeed: 1.2,
-            delayBetweenStrokes: 100
+            strokeAnimationSpeed: 1.5,
+            delayBetweenStrokes: 80
         }}).loopCharacterAnimation();
         """
 
@@ -404,7 +405,7 @@ else:
         if st.button("🔎 Show Extra Hint", key=f"hint-{idx}"):
             st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if is_chinese else "Sound out the letters!"))
         
-        # Fast, static-keyed handwriting canvas
+        # Fast canvas pad
         if is_chinese:
             st.markdown("✍️ **Write your characters on the magic pad:**")
             
