@@ -10,7 +10,6 @@ API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 st.title("📊 Parent Summary & Practice History")
 
-# PIN Protection
 PARENT_PIN = "6666"
 
 if "parent_dashboard_unlocked" not in st.session_state:
