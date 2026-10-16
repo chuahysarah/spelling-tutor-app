@@ -83,7 +83,8 @@ def speak_text(text: str):
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
     try:
         clean_token = api_key.strip().strip("'").strip('"')
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={clean_token}"
+        # Correct endpoint for gemini-1.5-flash vision capabilities
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_token}"
         
         if isinstance(image_data, np.ndarray):
             img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
@@ -95,10 +96,11 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
         prompt = (
-            f"You are evaluating a child's handwritten Chinese character. "
-            f"The intended target character is '{target_char}'. "
-            f"Analyze the image strokes and respond strictly in valid JSON format with two keys: "
-            f"'is_correct' (boolean: true or false) and 'feedback' (string: short encouraging feedback in English)."
+            f"You are a strict primary school Chinese language teacher grading a child's handwritten attempt. "
+            f"The target Chinese word or character is: '{target_char}'. "
+            f"Examine the image carefully. "
+            f"If the strokes drawn in the image do NOT form the target character '{target_char}' (or if components/strokes are missing or wrong), set 'is_correct' to false. "
+            f"Respond strictly in valid JSON format with keys 'is_correct' (boolean) and 'feedback' (encouraging feedback explaining any stroke errors in English)."
         )
 
         payload = {
@@ -110,7 +112,7 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
 
         if resp.status_code == 200:
             res_json = resp.json()
@@ -118,20 +120,17 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             match = re.search(r'\{.*\}', text_resp, re.DOTALL)
             if match:
                 parsed = json.loads(match.group())
-                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
-            return True, "Handwriting evaluated!"
-    except Exception:
+                return bool(parsed.get("is_correct", False)), str(parsed.get("feedback", "Evaluated successfully!"))
+    except Exception as exc:
         pass
 
-    # Built-in handwriting stroke fallback
+    # Strict fallback when offline: do not pass random drawings automatically
     if isinstance(image_data, np.ndarray) and image_data.size > 0:
         has_drawing = np.sum(image_data[:, :, :3] < 200) > 500
-        if has_drawing:
-            return True, f"Great handwriting practice for '{target_char}'!"
-        else:
+        if not has_drawing:
             return False, "Please draw the character on the pad before grading."
-
-    return True, f"Practice recorded for '{target_char}'!"
+            
+    return False, f"Could not verify stroke accuracy for '{target_char}'. Please check stroke order and try again!"
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -318,7 +317,7 @@ with col1:
                 st.warning(f"Could not read canvas image data: {e}")
 
             if img_data is not None:
-                with st.spinner("Analyzing Chinese handwriting..."):
+                with st.spinner("Analyzing Chinese handwriting with AI..."):
                     is_correct, feedback = grade_handwriting_with_gemini(
                         img_data, target_word, GEMINI_API_KEY
                     )
@@ -328,7 +327,7 @@ with col1:
                         st.session_state[f"quiz_score_{active_child}"] += 1
                         st.session_state[f"mastered_words_{active_child}"].add(target_word)
                     else:
-                        st.error(f"❌ Target Character: **{target_word}**")
+                        st.error(f"❌ Incorrect for target character: **{target_word}**")
                         st.write(f"💬 {feedback}")
                         st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
                     st.session_state[f"quiz_checked_{active_child}"] = True
