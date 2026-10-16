@@ -8,7 +8,6 @@ import streamlit as st
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
 
-# Retrieve Google Apps Script Web App URL from Secrets
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 st.markdown("""
@@ -35,11 +34,12 @@ html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
 def fetch_remote_lists() -> dict[str, str]:
     if API_URL:
         try:
-            resp = requests.get(API_URL, timeout=5)
+            # Explicitly pass action=get_lists for consistent Apps Script handling
+            resp = requests.get(f"{API_URL}?action=get_lists", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict):
-                    return data  # Returns live dict from Google Sheet, including empty {}
+                    return data
         except Exception:
             pass
     return {}
@@ -73,7 +73,7 @@ def normalize_words(raw: str) -> list[str]:
 
 
 # Initialize Session State Variables
-if "archived_lists" not in st.session_state:
+if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
     st.session_state.archived_lists = fetch_remote_lists()
 
 if "active_week" not in st.session_state or st.session_state.active_week not in st.session_state.archived_lists:
@@ -167,7 +167,6 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
 
-                # Safely re-lock panel upon saving
                 st.session_state.parent_unlocked = False
                 st.rerun()
             else:
@@ -196,7 +195,6 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                         st.session_state.raw_words = ""
                     st.session_state.cached_analysis = {}
 
-                # Safely re-lock panel upon deleting
                 st.session_state.parent_unlocked = False
                 st.rerun()
         else:
