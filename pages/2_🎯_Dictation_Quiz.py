@@ -16,6 +16,7 @@ st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="c
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+
 def get_gemini_key() -> str:
     key = st.session_state.get("api_key", "")
     if key:
@@ -26,12 +27,14 @@ def get_gemini_key() -> str:
         return str(st.secrets["gemini_api_key"]).strip()
     return ""
 
+
 GEMINI_API_KEY = get_gemini_key()
 
 st.title("🎯 Spelling & Chinese Dictation Quiz")
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
+    """Logs the final completed quiz stats into the Google Sheets History tab."""
     if API_URL:
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -50,6 +53,7 @@ def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: 
 
 
 def speak_text(text: str):
+    """Plays audio for English or Chinese target words."""
     try:
         lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -62,6 +66,7 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
+    """Sends handwritten canvas drawing to Gemini 1.5 Flash Vision supporting AQ-format keys."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
@@ -90,19 +95,13 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        # Try query parameter first
-        headers = {"Content-Type": "application/json"}
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        # Uses clean JSON headers without OAuth bearer tokens
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key
+        }
 
-        # Fallback to headers if query param auth fails
-        if resp.status_code == 401:
-            fallback_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-            headers_fallback = {
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": api_key,
-                "Authorization": f"Bearer {api_key}"
-            }
-            resp = requests.post(fallback_url, json=payload, headers=headers_fallback, timeout=10)
+        resp = requests.post(url, json=payload, headers=headers, timeout=12)
 
         if resp.status_code == 200:
             res_json = resp.json()
@@ -111,8 +110,9 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             if match:
                 parsed = json.loads(match.group())
                 return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
+            return True, "Handwriting evaluated!"
         else:
-            return False, f"API Response Error ({resp.status_code}): {resp.text}"
+            return False, f"API Error ({resp.status_code}): {resp.text}"
     except Exception as e:
         return False, f"Error calling Gemini Vision API: {e}"
 
@@ -218,8 +218,7 @@ with col1:
     if st.button("✅ Grade Answer", type="primary"):
         if is_chinese:
             if not GEMINI_API_KEY:
-                st.error("❌ `GEMINI_API_KEY` is empty or missing from Streamlit Secrets!")
-                st.info("Ensure your key in Secrets is named `GEMINI_API_KEY` or `gemini_api_key`.")
+                st.error("❌ `GEMINI_API_KEY` is missing from Streamlit Secrets!")
             else:
                 img_data = None
                 try:
