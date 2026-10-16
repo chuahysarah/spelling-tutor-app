@@ -432,41 +432,103 @@ def render_hanzi_animations(word: str) -> None:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stroke numbers and enlarged character viewer</title>
 <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap');
 * { box-sizing:border-box; }
-body { margin:0; padding:4px; background:transparent; color:#111827; font:600 16px/1.4 'Nunito',Arial,sans-serif; }
+body { margin:0; padding:6px; background:transparent; color:#111827; font:600 16px/1.4 'Nunito',Arial,sans-serif; }
 .instructions { margin:0 0 10px; }
 .cards { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; align-items:flex-start; }
-.stroke-card { width:192px; padding:8px; border:2px solid #64748b; border-radius:16px; background:#fff; }
-.character-label { margin:0 0 4px; text-align:center; font-size:22px; font-weight:800; }
-.character-stage { position:relative; width:172px; height:172px; }
-.character-target { width:172px; height:172px; }
-.number-layer { position:absolute; inset:0; width:172px; height:172px; pointer-events:none; }
-.number-layer[hidden] { display:none; }
+.stroke-card { width:196px; padding:8px; border:2px solid #64748b; border-radius:16px; background:#fff; }
+button { min-height:48px; border:2px solid #173f91; border-radius:10px; background:#173f91; color:white; font:800 16px 'Nunito',Arial,sans-serif; cursor:pointer; }
+button:disabled { color:#374151; background:#e5e7eb; border-color:#64748b; cursor:default; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #ffc000; outline-offset:2px; box-shadow:0 0 0 2px #111827; }
+select { min-height:48px; border:2px solid #64748b; border-radius:10px; background:#fff; color:#111827; font:700 16px 'Nunito',Arial,sans-serif; padding:8px; }
+.speed-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 12px; }
+.speed-controls label { font-weight:800; }
+.speed-note { margin:0 0 10px; color:#374151; font-size:13px; }
+.viewer-speed { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0; }
+.character-open { display:block; width:100%; padding:0; background:white; color:#111827; border:2px solid transparent; }
+.character-open:hover { border-color:#173f91; background:#eff6ff; }
+.character-label { display:block; text-align:center; font-size:22px; font-weight:800; margin:0 0 4px; }
+.character-stage { display:block; position:relative; width:172px; height:172px; margin:auto; }
+.character-target { display:block; width:172px; height:172px; }
+.number-layer { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.number-layer[hidden] { display:none !important; }
 .stroke-number text { fill:#111827; font:800 11px Arial,sans-serif; text-anchor:middle; dominant-baseline:central; }
 .stroke-number circle { fill:#ffc94a; stroke:#111827; stroke-width:1.5; }
+.stroke-number.is-current circle { fill:#173f91; }
+.stroke-number.is-current text { fill:white; }
 .leader { stroke:#475569; stroke-width:1; }
+.open-hint { display:block; text-align:center; color:#173f91; font-size:13px; margin:5px 0; }
 label { display:flex; align-items:center; gap:8px; min-height:48px; cursor:pointer; font-size:14px; }
 input[type="checkbox"] { width:22px; height:22px; accent-color:#173f91; }
-button { width:100%; min-height:48px; border:2px solid #173f91; border-radius:10px; background:#173f91; color:white; font:800 16px 'Nunito',Arial,sans-serif; cursor:pointer; }
-button:disabled { color:#374151; background:#e5e7eb; border-color:#64748b; cursor:default; }
-button:focus-visible, input:focus-visible { outline:3px solid #ffc000; outline-offset:2px; box-shadow:0 0 0 2px #111827; }
+.pause { width:100%; }
 .status { margin:6px 0; min-height:20px; text-align:center; color:#374151; font-size:13px; }
 .error { color:#8e1b10; }
+.viewer { width:min(94vw,520px); max-height:95vh; margin:auto; padding:16px; border:2px solid #173f91; border-radius:20px; background:#fffefa; color:#111827; overflow:auto; }
+.viewer::backdrop { background:rgba(17,24,39,.6); }
+.viewer-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.viewer h2 { margin:0; color:#173f91; font-size:24px; }
+.close { padding:8px 12px; }
+.viewer-stage { position:relative; margin:12px auto; width:var(--viewer-size); height:var(--viewer-size); max-width:100%; }
+.viewer-stage > svg { display:block; width:100%; height:100%; }
+.viewer .number-layer { position:absolute; }
+.viewer-description { margin:8px 0; font-size:15px; }
+.stroke-position { text-align:center; color:#173f91; font-weight:800; margin:8px 0; }
+.viewer-actions { display:flex; gap:8px; }
+.viewer-actions button { flex:1 1 0; min-width:0; padding:8px; }
+.replay { width:100%; margin-top:10px; }
+@media (max-width:380px) { .viewer { padding:10px; } .viewer-actions button { font-size:14px; } }
 </style>
 </head>
 <body>
-<p class="instructions">Numbers show the order of strokes. Each label points to where a stroke starts.</p>
+<p class="instructions">Numbers show stroke order. Tap a character to enlarge it and practise one stroke at a time.</p>
+<div class="speed-controls">
+  <label for="stroke-speed">Stroke speed</label>
+  <select id="stroke-speed"><option value="slow">Slow (0.5×)</option><option value="normal" selected>Normal (1×)</option><option value="fast">Fast (2×)</option></select>
+</div>
+<p class="speed-note">Changing speed restarts the character drawing. Paused drawings stay paused.</p>
 <div class="cards" id="stroke-cards"></div>
+<dialog class="viewer" id="stroke-viewer" aria-labelledby="viewer-title" aria-describedby="viewer-description">
+  <div class="viewer-header"><h2 id="viewer-title">Stroke viewer</h2><button type="button" class="close" id="close-viewer" autofocus>Close</button></div>
+  <p class="viewer-description" id="viewer-description">Choose Next stroke to add one stroke. The current stroke is purple and its number is blue.</p>
+  <div class="viewer-stage" id="viewer-stage"></div>
+  <div class="stroke-position" id="stroke-position" role="status" aria-live="polite"></div>
+  <label><input type="checkbox" id="viewer-numbers" checked>Show stroke numbers</label>
+  <div class="viewer-speed"><label for="viewer-speed">Replay speed</label><select id="viewer-speed"><option value="slow">Slow (0.5×)</option><option value="normal" selected>Normal (1×)</option><option value="fast">Fast (2×)</option></select></div>
+  <div class="viewer-actions"><button type="button" id="previous-stroke">← Previous stroke</button><button type="button" id="next-stroke">Next stroke →</button></div>
+  <button type="button" class="replay" id="replay-strokes">Replay from stroke 1</button>
+</dialog>
 <script>
 (() => {
     const characters = __CHARACTERS__;
     const SIZE = 172;
-    const PADDING = 12;
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dialog = document.getElementById('stroke-viewer');
+    const modalNumbers = document.getElementById('viewer-numbers');
+    const previous = document.getElementById('previous-stroke');
+    const next = document.getElementById('next-stroke');
+    const replay = document.getElementById('replay-strokes');
+    const speedSelect = document.getElementById('stroke-speed');
+    const viewerSpeed = document.getElementById('viewer-speed');
+    const SPEEDS = {
+        slow:{multiplier:.5,draw:.75,gap:160,replay:1800,loop:4000},
+        normal:{multiplier:1,draw:1.5,gap:80,replay:900,loop:2000},
+        fast:{multiplier:2,draw:3,gap:40,replay:450,loop:1000}
+    };
+    let speedKey='normal';
+    try { const saved=sessionStorage.getItem('spellingTutorStrokeSpeed');if(SPEEDS[saved])speedKey=saved; } catch(error) { /* Storage may be blocked in embedded contexts. */ }
+    speedSelect.value=speedKey;viewerSpeed.value=speedKey;
+    const records = [];
+    let active = null;
+    let step = 1;
+    let replayTimer = null;
+    let dialogSize = 320;
+    let lastTrigger = null;
+    let runningBeforeDialog = [];
 
     function svgElement(tag, attrs) {
         const node = document.createElementNS(SVG_NS, tag);
@@ -474,129 +536,220 @@ button:focus-visible, input:focus-visible { outline:3px solid #ffc000; outline-o
         return node;
     }
 
-    // Spread overlapping badges slightly, with leader lines back to exact starts.
-    function placeBadge(start, used) {
-        for (let attempt = 0; attempt < 100; attempt++) {
-            const radius = attempt === 0 ? 0 : 3 * Math.sqrt(attempt);
-            const angle = attempt * 2.39996323;
-            const candidate = {
-                x: Math.min(SIZE - 11, Math.max(11, start.x + radius * Math.cos(angle))),
-                y: Math.min(SIZE - 11, Math.max(11, start.y + radius * Math.sin(angle)))
-            };
-            if (used.every(p => Math.hypot(p.x - candidate.x, p.y - candidate.y) >= 21)) {
-                used.push(candidate);
-                return candidate;
-            }
-        }
-        const fallback = { x:Math.min(SIZE - 11, Math.max(11, start.x)), y:Math.min(SIZE - 11, Math.max(11, start.y)) };
-        used.push(fallback);
-        return fallback;
+    function setNumbersVisible(layer, visible) {
+        // SVGElement.hidden is not a reliable reflected attribute in all browsers.
+        layer.toggleAttribute('hidden', !visible);
+        layer.style.display = visible ? '' : 'none';
     }
 
-    async function buildCard(character, index) {
-        const card = document.createElement('section');
-        card.className = 'stroke-card';
-        card.setAttribute('aria-label', 'Stroke order for ' + character);
-        const heading = document.createElement('h3');
-        heading.className = 'character-label';
-        heading.textContent = character;
-        const stage = document.createElement('div');
-        stage.className = 'character-stage';
-        const target = document.createElement('div');
-        target.className = 'character-target';
-        target.id = 'hanzi-target-' + index;
-        const overlay = svgElement('svg', { viewBox:'0 0 ' + SIZE + ' ' + SIZE, 'aria-hidden':'true' });
+    function badgePosition(start, used, size) {
+        const margin = 11;
+        for (let attempt = 0; attempt < 160; attempt++) {
+            const radius = attempt === 0 ? 0 : 3 * Math.sqrt(attempt);
+            const angle = attempt * 2.39996323;
+            const point = {
+                x:Math.min(size-margin, Math.max(margin, start.x+radius*Math.cos(angle))),
+                y:Math.min(size-margin, Math.max(margin, start.y+radius*Math.sin(angle)))
+            };
+            if (used.every(p => Math.hypot(p.x-point.x, p.y-point.y) >= 21)) {
+                used.push(point); return point;
+            }
+        }
+        const point = {x:Math.min(size-margin,Math.max(margin,start.x)),y:Math.min(size-margin,Math.max(margin,start.y))};
+        used.push(point); return point;
+    }
+
+    function makeNumbers(data, size, currentStroke) {
+        const overlay = svgElement('svg', {viewBox:'0 0 '+size+' '+size,'aria-hidden':'true'});
         overlay.classList.add('number-layer');
-        stage.append(target, overlay);
-        const label = document.createElement('label');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = true;
-        checkbox.setAttribute('aria-label', 'Show stroke numbers for ' + character);
-        label.append(checkbox, document.createTextNode('Show stroke numbers'));
-        const status = document.createElement('p');
-        status.className = 'status';
-        status.textContent = 'Loading strokes…';
-        const pause = document.createElement('button');
-        pause.type = 'button';
-        pause.disabled = true;
-        pause.textContent = reducedMotion ? 'Play strokes' : 'Pause';
-        pause.setAttribute('aria-label', 'Pause stroke animation for ' + character);
-        card.append(heading, stage, label, status, pause);
-        document.getElementById('stroke-cards').append(card);
-        checkbox.addEventListener('change', () => { overlay.hidden = !checkbox.checked; });
+        const transform = HanziWriter.getScalingTransform(size, size, 12);
+        const group = svgElement('g', {transform:transform.transform});
+        const matrix = group.transform.baseVal.consolidate().matrix;
+        const positions = [];
+        (Array.isArray(data.medians) ? data.medians : []).forEach((median, index) => {
+            if (!Array.isArray(median) || !median.length) return;
+            const [x,y] = median[0];
+            const start = {x:matrix.a*x+matrix.c*y+matrix.e,y:matrix.b*x+matrix.d*y+matrix.f};
+            const badge = badgePosition(start,positions,size);
+            const marker = svgElement('g',{'data-stroke-number':index+1});
+            marker.classList.add('stroke-number');
+            if (index+1 === currentStroke) marker.classList.add('is-current');
+            if (Math.hypot(badge.x-start.x,badge.y-start.y)>4) {
+                const line=svgElement('line',{x1:start.x,y1:start.y,x2:badge.x,y2:badge.y});
+                line.classList.add('leader'); marker.append(line);
+            }
+            marker.append(svgElement('circle',{cx:badge.x,cy:badge.y,r:9}));
+            const number=svgElement('text',{x:badge.x,y:badge.y});
+            number.textContent=String(index+1); marker.append(number); overlay.append(marker);
+        });
+        return overlay;
+    }
+
+    function stopReplay() {
+        if (replayTimer !== null) { clearInterval(replayTimer); replayTimer=null; }
+        replay.textContent='Replay from stroke 1';
+    }
+
+    function renderStep() {
+        if (!active) return;
+        const stage=document.getElementById('viewer-stage');
+        stage.replaceChildren();
+        stage.style.setProperty('--viewer-size',dialogSize+'px');
+        const svg=svgElement('svg',{viewBox:'0 0 '+dialogSize+' '+dialogSize,role:'img','aria-label':active.character+', stroke '+step+' of '+active.data.strokes.length});
+        const transform=HanziWriter.getScalingTransform(dialogSize,dialogSize,12);
+        const outline=svgElement('g',{transform:transform.transform,fill:'#e5e7eb'});
+        active.data.strokes.forEach(path => outline.append(svgElement('path',{d:path})));
+        svg.append(outline);
+        const drawn=svgElement('g',{transform:transform.transform});
+        active.data.strokes.slice(0,step).forEach((path,index) => {
+            drawn.append(svgElement('path',{d:path,fill:index===step-1?'#4b1d82':'#173f91','data-visible-stroke':index+1}));
+        });
+        svg.append(drawn); stage.append(svg);
+        const numbers=makeNumbers(active.data,dialogSize,step);
+        setNumbersVisible(numbers,modalNumbers.checked);
+        stage.append(numbers);
+        document.getElementById('stroke-position').textContent='Stroke '+step+' of '+active.data.strokes.length;
+        previous.disabled=step<=1;
+        next.disabled=step>=active.data.strokes.length;
+    }
+
+    function openViewer(record, trigger) {
+        if (!record.data) return;
+        stopReplay(); active=record; step=1; lastTrigger=trigger;
+        modalNumbers.checked=record.checkbox.checked;
+        dialogSize=Math.max(120,Math.min(420,window.innerWidth-68,window.innerHeight-335));
+        document.getElementById('viewer-title').textContent=record.character+' — Stroke viewer';
+        runningBeforeDialog=records.filter(r=>r.started&&!r.paused&&r.writer);
+        runningBeforeDialog.forEach(r=>r.writer.pauseAnimation());
+        renderStep(); dialog.showModal();
+    }
+    previous.addEventListener('click',()=>{stopReplay();step=Math.max(1,step-1);renderStep();});
+    next.addEventListener('click',()=>{stopReplay();step=Math.min(active.data.strokes.length,step+1);renderStep();});
+    modalNumbers.addEventListener('change',()=>{
+        const layer=document.querySelector('#viewer-stage .number-layer');
+        if(layer) setNumbersVisible(layer,modalNumbers.checked);
+    });
+    function startReplay(reset) {
+        stopReplay();
+        if(reset)step=1;
+        renderStep();
+        if(step>=active.data.strokes.length)return;
+        replay.textContent='Pause replay';
+        replayTimer=setInterval(()=>{
+            if(step>=active.data.strokes.length){stopReplay();return;}
+            step++;renderStep();
+            if(step>=active.data.strokes.length)stopReplay();
+        },SPEEDS[speedKey].replay);
+    }
+    replay.addEventListener('click',()=>{
+        if(replayTimer!==null){stopReplay();return;}
+        startReplay(true);
+    });
+    document.getElementById('close-viewer').addEventListener('click',()=>dialog.close());
+    dialog.addEventListener('close',()=>{
+        stopReplay();runningBeforeDialog.forEach(r=>{
+            if(r.loopArmed)r.writer.resumeAnimation();
+            else {r.writer.loopCharacterAnimation();r.loopArmed=true;}
+        });
+        runningBeforeDialog=[];active=null;if(lastTrigger)lastTrigger.focus();
+    });
+
+    async function rebuildWriter(record) {
+        const version=++record.rebuildVersion;
+        if(record.writer) {
+            // setCharacter is a public reset method: it cancels the old animation.
+            const oldWriter=record.writer;
+            await oldWriter.setCharacter(record.character);
+            oldWriter.pauseAnimation();
+        }
+        if(version!==record.rebuildVersion)return;
+        record.target.replaceChildren();
+        const config=SPEEDS[speedKey];
+        const writer=HanziWriter.create(record.target.id,record.character,{
+            width:SIZE,height:SIZE,padding:12,showOutline:true,showCharacter:true,
+            strokeColor:'#173f91',outlineColor:'#cbd5e1',
+            strokeAnimationSpeed:config.draw,delayBetweenStrokes:config.gap,delayBetweenLoops:config.loop,
+            charDataLoader:(_char,success)=>success(record.data)
+        });
+        record.writer=writer;record.loopArmed=false;
+        await writer.showCharacter({duration:0});
+        if(version!==record.rebuildVersion)return;
+        if(record.started&&!record.paused&&!dialog.open) {
+            writer.loopCharacterAnimation();record.loopArmed=true;
+        }
+        record.card.dataset.speed=speedKey;
+        record.card.dataset.drawSpeed=String(config.draw);
+        record.card.dataset.paused=String(record.paused);
+    }
+
+    function changeSpeed(value) {
+        if(!SPEEDS[value])return;
+        speedKey=value;speedSelect.value=value;viewerSpeed.value=value;
+        try {sessionStorage.setItem('spellingTutorStrokeSpeed',value);}catch(error){/* Optional preference only. */}
+        // Keep the current enlarged-viewer stroke when changing replay speed.
+        if(replayTimer!==null)startReplay(false);
+        records.filter(r=>r.data).forEach(r=>{
+            rebuildWriter(r).catch(()=>{r.card.dataset.speedError='true';});
+        });
+    }
+    speedSelect.addEventListener('change',()=>changeSpeed(speedSelect.value));
+    viewerSpeed.addEventListener('change',()=>changeSpeed(viewerSpeed.value));
+
+    async function buildCard(character,index) {
+        const card=document.createElement('section');card.className='stroke-card';
+        card.setAttribute('aria-label','Stroke order for '+character);
+        const open=document.createElement('button');open.type='button';open.className='character-open';
+        open.setAttribute('aria-label','Enlarge '+character+' and view each stroke');
+        open.setAttribute('aria-haspopup','dialog');open.disabled=true;
+        const heading=document.createElement('span');heading.className='character-label';heading.textContent=character;
+        const stage=document.createElement('span');stage.className='character-stage';
+        const target=document.createElement('span');target.className='character-target';target.id='hanzi-target-'+index;
+        const hint=document.createElement('span');hint.className='open-hint';hint.textContent='Tap to enlarge';
+        stage.append(target);open.append(heading,stage,hint);
+        const label=document.createElement('label');
+        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=true;
+        checkbox.setAttribute('aria-label','Show stroke numbers for '+character);
+        label.append(checkbox,document.createTextNode('Show stroke numbers'));
+        const status=document.createElement('p');status.className='status';status.textContent='Loading strokes…';
+        const pause=document.createElement('button');pause.type='button';pause.className='pause';pause.disabled=true;
+        pause.textContent=reducedMotion?'Play strokes':'Pause';
+        card.append(open,label,status,pause);document.getElementById('stroke-cards').append(card);
+        const record={character,checkbox,card,target,writer:null,data:null,started:!reducedMotion,paused:false,loopArmed:false,rebuildVersion:0};records.push(record);
+        checkbox.addEventListener('change',()=>{const layer=stage.querySelector('.number-layer');if(layer)setNumbersVisible(layer,checkbox.checked);});
+        open.addEventListener('click',()=>openViewer(record,open));
         try {
-            if (!window.HanziWriter) throw new Error('Stroke library did not load');
-            const data = await HanziWriter.loadCharacterData(character);
-            const transform = HanziWriter.getScalingTransform(SIZE, SIZE, PADDING);
-            const coordinateGroup = svgElement('g', { transform:transform.transform });
-            const matrix = coordinateGroup.transform.baseVal.consolidate().matrix;
-            const positions = [];
-            const medians = Array.isArray(data.medians) ? data.medians : [];
-            medians.forEach((median, strokeIndex) => {
-                if (!Array.isArray(median) || !median.length) return;
-                const [x, y] = median[0];
-                const start = { x:matrix.a * x + matrix.c * y + matrix.e, y:matrix.b * x + matrix.d * y + matrix.f };
-                const badge = placeBadge(start, positions);
-                const group = svgElement('g', { 'data-stroke-number':strokeIndex + 1 });
-                group.classList.add('stroke-number');
-                if (Math.hypot(badge.x - start.x, badge.y - start.y) > 4) {
-                    const line = svgElement('line', { x1:start.x, y1:start.y, x2:badge.x, y2:badge.y });
-                    line.classList.add('leader');
-                    group.append(line);
+            if(!window.HanziWriter)throw new Error('Library unavailable');
+            record.data=await HanziWriter.loadCharacterData(character);
+            const numbers=makeNumbers(record.data,SIZE,0);setNumbersVisible(numbers,checkbox.checked);stage.append(numbers);
+            await rebuildWriter(record);
+            status.textContent=record.data.strokes.length+' strokes';pause.disabled=false;open.disabled=false;
+            pause.setAttribute('aria-label',(record.started?'Pause':'Play')+' strokes for '+character);
+            pause.addEventListener('click',()=>{
+                if(!record.started){record.writer.loopCharacterAnimation();record.loopArmed=true;record.started=true;record.paused=false;}
+                else if(record.paused){
+                    if(record.loopArmed)record.writer.resumeAnimation();
+                    else {record.writer.loopCharacterAnimation();record.loopArmed=true;}
+                    record.paused=false;
                 }
-                group.append(svgElement('circle', { cx:badge.x, cy:badge.y, r:9 }));
-                const number = svgElement('text', { x:badge.x, y:badge.y });
-                number.textContent = String(strokeIndex + 1);
-                group.append(number);
-                overlay.append(group);
+                else{record.writer.pauseAnimation();record.paused=true;}
+                pause.textContent=record.paused?'Resume':'Pause';
+                pause.setAttribute('aria-label',(record.paused?'Resume':'Pause')+' strokes for '+character);
+                card.dataset.paused=String(record.paused);
             });
-            const writer = HanziWriter.create(target.id, character, {
-                width:SIZE, height:SIZE, padding:PADDING,
-                showOutline:true, showCharacter:reducedMotion,
-                strokeColor:'#173f91', outlineColor:'#cbd5e1',
-                strokeAnimationSpeed:1.5, delayBetweenStrokes:80,
-                charDataLoader: (_char, success) => success(data)
-            });
-            let started = !reducedMotion;
-            let paused = false;
-            if (started) writer.loopCharacterAnimation();
-            status.textContent = data.strokes.length + ' strokes' + (medians.length ? '' : ' — number labels unavailable');
-            pause.disabled = false;
-            pause.setAttribute('aria-label', (started ? 'Pause' : 'Play') + ' stroke animation for ' + character);
-            pause.addEventListener('click', () => {
-                if (!started) {
-                    writer.loopCharacterAnimation();
-                    started = true;
-                    paused = false;
-                } else if (paused) {
-                    writer.resumeAnimation();
-                    paused = false;
-                } else {
-                    writer.pauseAnimation();
-                    paused = true;
-                }
-                pause.textContent = paused ? 'Resume' : 'Pause';
-                pause.setAttribute('aria-label', (paused ? 'Resume' : 'Pause') + ' stroke animation for ' + character);
-            });
-            // Exposed on this local card for repeatable browser smoke tests.
-            card.dataset.strokeCount = String(data.strokes.length);
-            card.dataset.ready = 'true';
-        } catch (error) {
-            status.textContent = 'Strokes are unavailable. Please try this item again later.';
-            status.classList.add('error');
-            checkbox.disabled = true;
-            card.dataset.ready = 'error';
+            card.dataset.strokeCount=String(record.data.strokes.length);card.dataset.ready='true';
+        } catch(error) {
+            status.textContent='Strokes unavailable. Please try this item again later.';status.classList.add('error');
+            checkbox.disabled=true;card.dataset.ready='error';
         }
     }
-    characters.forEach((character, index) => { buildCard(character, index); });
+    characters.forEach((character,index)=>{buildCard(character,index);});
 })();
 </script>
 </body>
 </html>'''
     html_code = html_code.replace("__CHARACTERS__", json.dumps(chinese_chars, ensure_ascii=True))
-    # Reserve room for a one-column phone layout; allow internal scrolling for long sentences.
-    frame_height = min(len(chinese_chars) * 320 + 80, 720)
+    # Native HTML dialogs are confined to this iframe; reserve usable viewer height.
+    frame_height = min(max(len(chinese_chars) * 370 + 80, 650), 800)
     components.html(html_code, height=frame_height, scrolling=True)
 
 def rename_child_profile(old_name: str, new_name: str):
@@ -638,6 +791,12 @@ def move_learning_item(index_key: str, delta: int, item_count: int) -> None:
     """Streamlit calls this before rerendering, so one click moves exactly one item."""
     position = int(st.session_state.get(index_key, 0))
     st.session_state[index_key] = max(0, min(position + delta, max(0, item_count - 1)))
+
+
+def jump_to_learning_item(index_key: str, picker_key: str, item_count: int) -> None:
+    """Copy the chosen item to durable per-learner navigation state."""
+    position = int(st.session_state.get(picker_key, 0))
+    st.session_state[index_key] = max(0, min(position, max(0, item_count - 1)))
 
 
 if "children" not in st.session_state:
@@ -731,6 +890,20 @@ analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
 # One item at a time: this changes presentation, not analysis or spelling rules.
 index_key, index = prepare_item_navigation(st.session_state, active_child, selected_week, words)
+picker_key = f"learn_item_picker_{active_child}"
+# Sync before creating the widget, so arrow clicks and list resets update its label.
+# The durable index is separate from the widget key and survives learner switching.
+st.session_state[picker_key] = index
+st.selectbox(
+    "Jump to an item:",
+    options=list(range(len(words))),
+    index=None,
+    key=picker_key,
+    format_func=lambda position: f"{position + 1}. {words[position]}",
+    on_change=jump_to_learning_item,
+    args=(index_key, picker_key, len(words)),
+    help="Choose any word, phrase, or sentence to go directly to it.",
+)
 st.markdown(
     f'<div class="item-progress" role="status">Item {index + 1} of {len(words)}</div>',
     unsafe_allow_html=True,
