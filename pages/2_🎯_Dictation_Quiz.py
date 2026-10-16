@@ -18,22 +18,22 @@ API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 
 def get_gemini_key() -> str:
-    """Retrieves and cleans the AQ-format API key, stripping stray quotes or whitespace."""
-    raw_key = st.session_state.get("api_key", "")
-    if not raw_key and "GEMINI_API_KEY" in st.secrets:
-        raw_key = str(st.secrets["GEMINI_API_KEY"])
-    elif not raw_key and "gemini_api_key" in st.secrets:
-        raw_key = str(st.secrets["gemini_api_key"])
+    """Prioritizes Streamlit Cloud Secrets to prevent old state overrides."""
+    key = ""
+    if "GEMINI_API_KEY" in st.secrets:
+        key = str(st.secrets["GEMINI_API_KEY"])
+    elif "gemini_api_key" in st.secrets:
+        key = str(st.secrets["gemini_api_key"])
+    elif st.session_state.get("api_key"):
+        key = str(st.session_state.get("api_key"))
     
-    # Strip whitespace, newlines, and any quotes left from TOML formatting
-    return raw_key.strip().strip("'").strip('"')
+    return key.strip().strip("'").strip('"')
 
 
 GEMINI_API_KEY = get_gemini_key()
 
 
 def fetch_available_lists() -> dict[str, str]:
-    """Fetches word lists from session state or Google Sheets backend API."""
     if "archived_lists" in st.session_state and st.session_state.archived_lists:
         return st.session_state.archived_lists
 
@@ -81,13 +81,12 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends handwritten canvas drawing directly to Gemini 1.5 Flash supporting AQ keys."""
+    """Sends handwritten drawing to Gemini 1.5 Flash using the v1 endpoint with header authentication."""
     try:
-        # Sanitize key string
         clean_key = api_key.strip().strip("'").strip('"')
         
-        # REST Endpoint URL (Key passed only as URL parameter)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+        # Target the stable v1 endpoint directly
+        url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
         
         if isinstance(image_data, np.ndarray):
             img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
@@ -114,13 +113,13 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        # Send strictly Content-Type header to avoid authorization parameter collisions
-        resp = requests.post(
-            url, 
-            json=payload, 
-            headers={"Content-Type": "application/json"}, 
-            timeout=12
-        )
+        # Send authentication strictly in the header to avoid 401 URL collisions
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": clean_key
+        }
+
+        resp = requests.post(url, json=payload, headers=headers, timeout=12)
 
         if resp.status_code == 200:
             res_json = resp.json()
