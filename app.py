@@ -46,7 +46,6 @@ if "unfamiliar_words" not in st.session_state:
 
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
-    # Store API Key directly into Session State so all pages access it
     api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value=st.session_state.get("api_key", ""))
     if api_key_input:
         st.session_state.api_key = api_key_input.strip()
@@ -64,6 +63,8 @@ if submitted:
     st.session_state.quiz_checked = False
     st.session_state.mastered_words = set()
     st.session_state.unfamiliar_words = set()
+    # Reset cached AI analysis on new list submission
+    st.session_state.cached_analysis = {}
     st.success("🎉 Words saved! Select '📖 Learn Words' or '🎯 Dictation Quiz' from the sidebar menu to begin!")
 
 words = normalize_words(st.session_state.raw_words)
