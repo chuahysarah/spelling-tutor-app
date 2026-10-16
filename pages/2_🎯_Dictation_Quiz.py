@@ -15,7 +15,19 @@ from streamlit_drawable_canvas import st_canvas
 st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
-GEMINI_API_KEY = (st.session_state.get("api_key", "") or st.secrets.get("GEMINI_API_KEY", "")).strip()
+
+# Flexible Secret Key retrieval (handles lowercase, uppercase, and session_state)
+def get_gemini_key() -> str:
+    key = st.session_state.get("api_key", "")
+    if key:
+        return key.strip()
+    if "GEMINI_API_KEY" in st.secrets:
+        return str(st.secrets["GEMINI_API_KEY"]).strip()
+    if "gemini_api_key" in st.secrets:
+        return str(st.secrets["gemini_api_key"]).strip()
+    return ""
+
+GEMINI_API_KEY = get_gemini_key()
 
 st.title("🎯 Spelling & Chinese Dictation Quiz")
 
@@ -58,7 +70,11 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
         # Convert canvas array to RGB JPEG image
-        img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
+        if isinstance(image_data, np.ndarray):
+            img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
+        else:
+            img = image_data.convert('RGB')
+
         buffered = io.BytesIO()
         img.save(buffered, format="JPEG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -66,7 +82,7 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
         prompt = (
             f"You are evaluating a child's handwritten Chinese character. "
             f"The intended target character is '{target_char}'. "
-            f"Analyze the drawing image and respond strictly in valid JSON format with two keys: "
+            f"Analyze the image strokes and respond strictly in valid JSON format with two keys: "
             f"'is_correct' (boolean: true or false) and 'feedback' (string: short encouraging feedback in English)."
         )
 
@@ -87,9 +103,10 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             if match:
                 parsed = json.loads(match.group())
                 return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
+        else:
+            return False, f"API Response Error ({resp.status_code}): {resp.text}"
     except Exception as e:
-        pass
-    return False, "Could not evaluate handwriting automatically."
+        return False, f"Error calling Gemini Vision API: {e}"
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -191,33 +208,35 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Answer", type="primary"):
         if is_chinese:
-            img_data = None
-            try:
-                if canvas_result is not None:
-                    img_data = canvas_result.image_data
-            except Exception:
-                img_data = None
-
-            # Accepts all API key formats (both AIzaSy... and AQ... keys)
-            if GEMINI_API_KEY and len(GEMINI_API_KEY) > 10 and img_data is not None:
-                with st.spinner("Analyzing Chinese handwriting with Gemini AI..."):
-                    is_correct, feedback = grade_handwriting_with_gemini(
-                        img_data, target_word, GEMINI_API_KEY
-                    )
-                    if is_correct:
-                        st.success(f"🌟 Correct! Awesome handwriting: **{target_word}**")
-                        st.write(f"💬 {feedback}")
-                        st.session_state.quiz_score += 1
-                        st.session_state.mastered_words.add(target_word)
-                    else:
-                        st.error(f"❌ Target Character: **{target_word}**")
-                        st.write(f"💬 {feedback}")
-                        st.session_state.unfamiliar_words.add(target_word)
-                    st.session_state.quiz_checked = True
+            # Diagnostics check
+            if not GEMINI_API_KEY:
+                st.error("❌ `GEMINI_API_KEY` is empty or missing from Streamlit Secrets!")
+                st.info("Ensure your key in Secrets is named `GEMINI_API_KEY` or `gemini_api_key`.")
             else:
-                st.write(f"📖 Target Character: **{target_word}**")
-                st.info("Please verify GEMINI_API_KEY is configured in Secrets for automatic vision grading!")
-                st.session_state.quiz_checked = True
+                img_data = None
+                try:
+                    if canvas_result is not None and canvas_result.image_data is not None:
+                        img_data = canvas_result.image_data
+                except Exception as e:
+                    st.warning(f"Could not read canvas image data: {e}")
+
+                if img_data is not None:
+                    with st.spinner("Analyzing Chinese handwriting with Gemini AI..."):
+                        is_correct, feedback = grade_handwriting_with_gemini(
+                            img_data, target_word, GEMINI_API_KEY
+                        )
+                        if is_correct:
+                            st.success(f"🌟 Correct! Awesome handwriting: **{target_word}**")
+                            st.write(f"💬 {feedback}")
+                            st.session_state.quiz_score += 1
+                            st.session_state.mastered_words.add(target_word)
+                        else:
+                            st.error(f"❌ Target Character: **{target_word}**")
+                            st.write(f"💬 {feedback}")
+                            st.session_state.unfamiliar_words.add(target_word)
+                        st.session_state.quiz_checked = True
+                else:
+                    st.warning("✏️ Canvas stroke data empty! Write on the pad before clicking Grade.")
         else:
             clean_user = user_answer.strip().casefold() if 'user_answer' in locals() else ""
             clean_target = target_word.strip().casefold()
