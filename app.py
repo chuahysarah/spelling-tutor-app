@@ -12,6 +12,15 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
+# Fixed sidebar labels/order; keep deployed filenames and app.py unchanged.
+st.sidebar.page_link('app.py', label='Home')
+st.sidebar.page_link('pages/1_📖_Learn_Words.py', label='Learn Words', icon='📖')
+st.sidebar.page_link('pages/2_🎯_Dictation_Quiz.py', label='Dictation Quiz', icon='🎯')
+st.sidebar.page_link('pages/5_More_Practices.py', label='More Practices')
+st.sidebar.page_link('pages/4_🌱_Word Garden.py', label='Word Garden', icon='🌱')
+st.sidebar.page_link('pages/3_📊_Parent_Summary.py', label='Parent Summary', icon='📊')
+st.sidebar.divider()
+
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 st.markdown("""
@@ -481,7 +490,7 @@ if st.button(
     use_container_width=True,
     help="Open your Word Garden",
 ):
-    st.switch_page("pages/4_🌱_Word_Garden.py")
+    st.switch_page("pages/4_🌱_Word Garden.py")
 
 st.divider()
 
