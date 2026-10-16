@@ -8,6 +8,20 @@ st.set_page_config(page_title="Parent Dashboard 📊", page_icon="📊", layout=
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+
+html, body, [class*="css"], button, input, select {
+    font-family: 'Fredoka', cursive, sans-serif !important;
+    font-size: 1.15rem;
+}
+
+h1 { font-size: 2.6rem !important; color: #0284c7 !important; }
+h2 { font-size: 2.1rem !important; color: #0369a1 !important; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📊 Parent Summary & Practice History")
 
 PARENT_PIN = "6666"
