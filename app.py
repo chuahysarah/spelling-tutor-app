@@ -55,7 +55,6 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
-@st.cache_data(show_spinner=False, max_entries=64)
 def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[str, Any]], str | None]:
     if not api_key:
         return {}, "No API key configured."
@@ -67,8 +66,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     response = None
     err_msg = None
     
-    # Updated to active model endpoints
-    for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+    for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash"]:
         try:
             response = client.models.generate_content(
                 model=model_name,
