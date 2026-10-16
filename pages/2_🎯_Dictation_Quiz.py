@@ -82,8 +82,10 @@ def speak_text(text: str):
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
     try:
-        clean_token = api_key.strip().strip("'").strip('"')
-        url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+        clean_key = api_key.strip().strip("'").strip('"')
+        
+        # Use query parameter key authentication (no Bearer header)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
         
         if isinstance(image_data, np.ndarray):
             img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
@@ -110,17 +112,11 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        headers_bearer = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {clean_token}"
+        headers = {
+            "Content-Type": "application/json"
         }
 
-        headers_goog = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": clean_token
-        }
-
-        resp = requests.post(url, json=payload, headers=headers_bearer, timeout=12)
+        resp = requests.post(url, json=payload, headers=headers, timeout=12)
 
         if resp.status_code == 200:
             res_json = resp.json()
@@ -131,7 +127,13 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
                 return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
             return True, "Handwriting evaluated!"
 
-        resp_fb = requests.post(url, json=payload, headers=headers_goog, timeout=12)
+        # Fallback to x-goog-api-key header without ?key=
+        fallback_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        fallback_headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": clean_key
+        }
+        resp_fb = requests.post(fallback_url, json=payload, headers=fallback_headers, timeout=12)
         if resp_fb.status_code == 200:
             res_json = resp_fb.json()
             text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
