@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import datetime
 import io
 import json
@@ -7,17 +8,18 @@ import re
 import requests
 import streamlit as st
 from gtts import gTTS
+from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
+GEMINI_API_KEY = st.session_state.get("api_key", "") or st.secrets.get("GEMINI_API_KEY", "")
 
 st.title("🎯 Spelling & Chinese Dictation Quiz")
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
-    """Sends completed quiz results live to Google Sheets database."""
     if API_URL:
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -36,7 +38,6 @@ def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: 
 
 
 def speak_text(text: str):
-    """Generates audio for English or Chinese spelling words."""
     try:
         lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -46,6 +47,46 @@ def speak_text(text: str):
         st.audio(fp, format="audio/mp3", autoplay=True)
     except Exception:
         st.warning("Audio playback failed.")
+
+
+def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
+    """Sends the handwritten canvas drawing to Gemini AI for vision auto-grading."""
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        
+        # Convert canvas numpy array to JPEG bytes
+        img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        prompt = (
+            f"You are evaluating a child's handwritten Chinese character. "
+            f"The intended character is '{target_char}'. "
+            f"Analyze the drawing image and respond strictly in JSON format with two keys: "
+            f"'is_correct' (boolean: true or false) and 'feedback' (string: brief encouraging feedback in English/Chinese)."
+        )
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": img_str}}
+                ]
+            }]
+        }
+
+        resp = requests.post(url, json=payload, timeout=8)
+        if resp.status_code == 200:
+            res_json = resp.json()
+            text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
+            match = re.search(r'\{.*\}', text_resp, re.DOTALL)
+            if match:
+                parsed = json.loads(match.group())
+                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated!")
+    except Exception as e:
+        pass
+    return False, "Could not evaluate handwriting automatically."
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -59,7 +100,6 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-# Verify Active Week & Words
 active_week = st.session_state.get("active_week", "")
 raw_words = st.session_state.get("raw_words", "")
 quiz_words = normalize_words(raw_words)
@@ -68,7 +108,6 @@ if not quiz_words:
     st.warning("⚠️ No words found in the active list. Please select a weekly list on the home page first!")
     st.stop()
 
-# Initialize Quiz State
 if "quiz_index" not in st.session_state:
     st.session_state.quiz_index = 0
 if "quiz_score" not in st.session_state:
@@ -85,7 +124,7 @@ if "unfamiliar_words" not in st.session_state:
 total_q = len(quiz_words)
 current_idx = st.session_state.quiz_index
 
-# QUIZ COMPLETED SCREEN
+# Quiz Completion Screen
 if current_idx >= total_q:
     st.balloons()
     st.success("🎉 Quiz Completed! Outstanding effort!")
@@ -112,7 +151,6 @@ if current_idx >= total_q:
         st.rerun()
     st.stop()
 
-# ACTIVE QUIZ QUESTION SCREEN
 target_word = quiz_words[current_idx]
 is_chinese = bool(re.search(r'[\u4e00-\u9fff]', target_word))
 
@@ -125,46 +163,57 @@ if st.button("🔊 Play Word Sound", type="secondary"):
 
 st.write("---")
 
-# HANDWRITING PAD SECTION (Drawing canvas for both Chinese & English)
+# Dedicated Drawing Canvas
 st.subheader("✏️ Handwriting Practice Pad")
-st.caption("Use your touchscreen, finger, or mouse to write your answer directly on the canvas below:")
+st.caption("Write your answer using your finger or stylus in the box below:")
 
 canvas_result = st_canvas(
     fill_color="rgba(255, 255, 255, 0)",
-    stroke_width=4,
-    stroke_color="#1e293b",
-    background_color="#f8fafc",
-    height=220,
+    stroke_width=5,
+    stroke_color="#0f172a",
+    background_color="#ffffff",
+    height=260,
     width=340,
     drawing_mode="freedraw",
     key=f"canvas_{current_idx}"
 )
 
-# Text Verification Input
-user_answer = st.text_input("Type or verify your answer here for auto-grading:", key=f"quiz_ans_{current_idx}")
-
-# Reference Check Box (Helpful for Chinese Strokes & Character Reference)
-with st.expander("💡 Need a Hint / Reference Check?"):
-    if is_chinese:
-        st.write(f"**Target Character:** {target_word}")
-        st.caption("Practice writing the strokes on the canvas above!")
-    else:
-        st.write(f"**Hint / First Letter:** {target_word[0].upper()}...")
+# Text box rendered ONLY for English spelling lists
+if not is_chinese:
+    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{current_idx}")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("✅ Submit & Grade Answer", type="primary"):
-        clean_user = user_answer.strip().casefold()
-        clean_target = target_word.strip().casefold()
-
-        if clean_user == clean_target:
-            st.success(f"🌟 Correct! Awesome job: **{target_word}**")
-            st.session_state.quiz_score += 1
-            st.session_state.mastered_words.add(target_word)
+    if st.button("✅ Grade Handwriting", type="primary"):
+        if is_chinese:
+            if GEMINI_API_KEY and canvas_result.image_data is not None:
+                with st.spinner("Analyzing Chinese handwriting..."):
+                    is_correct, feedback = grade_handwriting_with_gemini(
+                        canvas_result.image_data, target_word, GEMINI_API_KEY
+                    )
+                    if is_correct:
+                        st.success(f"🌟 Correct! Awesome handwriting: **{target_word}**")
+                        st.write(f"💬 {feedback}")
+                        st.session_state.quiz_score += 1
+                        st.session_state.mastered_words.add(target_word)
+                    else:
+                        st.error(f"❌ Target Character: **{target_word}**")
+                        st.write(f"💬 {feedback}")
+                        st.session_state.unfamiliar_words.add(target_word)
+            else:
+                st.write(f"📖 Correct Character: **{target_word}**")
+                st.info("Ensure Gemini API Key is entered in sidebar for automatic vision grading!")
         else:
-            st.error(f"❌ Almost! The correct word is: **{target_word}**")
-            st.session_state.unfamiliar_words.add(target_word)
+            clean_user = user_answer.strip().casefold() if 'user_answer' in locals() else ""
+            clean_target = target_word.strip().casefold()
+            if clean_user == clean_target:
+                st.success(f"🌟 Correct! Awesome job: **{target_word}**")
+                st.session_state.quiz_score += 1
+                st.session_state.mastered_words.add(target_word)
+            else:
+                st.error(f"❌ Correct Spelling: **{target_word}**")
+                st.session_state.unfamiliar_words.add(target_word)
 
         st.session_state.quiz_checked = True
 
