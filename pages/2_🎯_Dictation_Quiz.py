@@ -1,35 +1,18 @@
 from __future__ import annotations
 
-import base64
 import datetime
 import io
 import json
 import re
 import requests
-import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 from gtts import gTTS
-from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
-
-
-def get_gemini_key() -> str:
-    key = ""
-    if "GEMINI_API_KEY" in st.secrets:
-        key = str(st.secrets["GEMINI_API_KEY"])
-    elif "gemini_api_key" in st.secrets:
-        key = str(st.secrets["gemini_api_key"])
-    elif st.session_state.get("api_key"):
-        key = str(st.session_state.get("api_key"))
-    
-    return key.strip().strip("'").strip('"')
-
-
-GEMINI_API_KEY = get_gemini_key()
 
 
 def fetch_available_lists() -> dict[str, str]:
@@ -80,57 +63,21 @@ def speak_text(text: str):
         st.warning("Audio playback failed.")
 
 
-def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    try:
-        clean_token = api_key.strip().strip("'").strip('"')
-        # Correct endpoint for gemini-1.5-flash vision capabilities
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_token}"
-        
-        if isinstance(image_data, np.ndarray):
-            img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
-        else:
-            img = image_data.convert('RGB')
+def render_hanzi_animations(word: str) -> None:
+    chinese_chars = [char for char in word if re.search(r"[\u3400-\u9fff]", char)]
+    if not chinese_chars:
+        return
 
-        buffered = io.BytesIO()
-        img.save(buffered, format="JPEG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    targets = ""
+    scripts = ""
+    for i, char in enumerate(chinese_chars):
+        div_id = f"target-{i}-{ord(char)}"
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff;"></div>'
+        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 100, height: 100, padding: 5, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
 
-        prompt = (
-            f"You are a strict primary school Chinese language teacher grading a child's handwritten attempt. "
-            f"The target Chinese word or character is: '{target_char}'. "
-            f"Examine the image carefully. "
-            f"If the strokes drawn in the image do NOT form the target character '{target_char}' (or if components/strokes are missing or wrong), set 'is_correct' to false. "
-            f"Respond strictly in valid JSON format with keys 'is_correct' (boolean) and 'feedback' (encouraging feedback explaining any stroke errors in English)."
-        )
-
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {"inline_data": {"mime_type": "image/jpeg", "data": img_str}}
-                ]
-            }]
-        }
-
-        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
-
-        if resp.status_code == 200:
-            res_json = resp.json()
-            text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
-            match = re.search(r'\{.*\}', text_resp, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                return bool(parsed.get("is_correct", False)), str(parsed.get("feedback", "Evaluated successfully!"))
-    except Exception as exc:
-        pass
-
-    # Strict fallback when offline: do not pass random drawings automatically
-    if isinstance(image_data, np.ndarray) and image_data.size > 0:
-        has_drawing = np.sum(image_data[:, :, :3] < 200) > 500
-        if not has_drawing:
-            return False, "Please draw the character on the pad before grading."
-            
-    return False, f"Could not verify stroke accuracy for '{target_char}'. Please check stroke order and try again!"
+    num_rows = (len(chinese_chars) + 4) // 5
+    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">{targets}</div><script>{scripts}</script></body></html>"""
+    components.html(html_code, height=num_rows * 120 + 20)
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -149,6 +96,7 @@ def reset_quiz_state(child_name: str):
     st.session_state[f"quiz_score_{child_name}"] = 0
     st.session_state[f"quiz_checked_{child_name}"] = False
     st.session_state[f"quiz_logged_{child_name}"] = False
+    st.session_state[f"quiz_result_{child_name}"] = None
     st.session_state[f"mastered_words_{child_name}"] = set()
     st.session_state[f"unfamiliar_words_{child_name}"] = set()
 
@@ -162,7 +110,7 @@ def rename_child_profile(old_name: str, new_name: str):
     
     st.session_state.active_child = new_name
 
-    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "mastered_words", "unfamiliar_words"]:
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
         old_key = f"{key_prefix}_{old_name}"
         new_key = f"{key_prefix}_{new_name}"
         if old_key in st.session_state:
@@ -241,6 +189,8 @@ if f"quiz_checked_{active_child}" not in st.session_state:
     st.session_state[f"quiz_checked_{active_child}"] = False
 if f"quiz_logged_{active_child}" not in st.session_state:
     st.session_state[f"quiz_logged_{active_child}"] = False
+if f"quiz_result_{active_child}" not in st.session_state:
+    st.session_state[f"quiz_result_{active_child}"] = None
 if f"mastered_words_{active_child}" not in st.session_state:
     st.session_state[f"mastered_words_{active_child}"] = set()
 if f"unfamiliar_words_{active_child}" not in st.session_state:
@@ -301,54 +251,47 @@ canvas_result = st_canvas(
     key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
 )
 
-if not is_chinese:
-    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{active_child}_{selected_list_title}_{current_idx}")
+# Reveal Target Answer & Reference Animation button
+if not st.session_state[f"quiz_checked_{active_child}"]:
+    if st.button("🔍 Reveal Answer & Check Writing", type="primary", use_container_width=True):
+        st.session_state[f"quiz_checked_{active_child}"] = True
+        st.rerun()
 
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("✅ Grade Answer", type="primary"):
-        if is_chinese:
-            img_data = None
-            try:
-                if canvas_result is not None and canvas_result.image_data is not None:
-                    img_data = canvas_result.image_data
-            except Exception as e:
-                st.warning(f"Could not read canvas image data: {e}")
-
-            if img_data is not None:
-                with st.spinner("Analyzing Chinese handwriting with AI..."):
-                    is_correct, feedback = grade_handwriting_with_gemini(
-                        img_data, target_word, GEMINI_API_KEY
-                    )
-                    if is_correct:
-                        st.success(f"🌟 Correct! Awesome handwriting, {active_child}: **{target_word}**")
-                        st.write(f"💬 {feedback}")
-                        st.session_state[f"quiz_score_{active_child}"] += 1
-                        st.session_state[f"mastered_words_{active_child}"].add(target_word)
-                    else:
-                        st.error(f"❌ Incorrect for target character: **{target_word}**")
-                        st.write(f"💬 {feedback}")
-                        st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
-                    st.session_state[f"quiz_checked_{active_child}"] = True
-            else:
-                st.warning("✏️ Canvas stroke data empty! Write on the pad before clicking Grade.")
-        else:
-            clean_user = user_answer.strip().casefold() if 'user_answer' in locals() else ""
-            clean_target = target_word.strip().casefold()
-            if clean_user == clean_target:
-                st.success(f"🌟 Correct! Awesome job, {active_child}: **{target_word}**")
+# Self-Evaluation Block
+if st.session_state[f"quiz_checked_{active_child}"]:
+    st.markdown(f"### 🔍 Reference Answer: **{target_word}**")
+    
+    if is_chinese:
+        st.caption("Compare your handwriting with the stroke order animation below:")
+        render_hanzi_animations(target_word)
+    
+    if st.session_state[f"quiz_result_{active_child}"] is None:
+        st.write("---")
+        st.write("### 📝 How did you do?")
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            if st.button("🌟 Pass / Correct", type="primary", use_container_width=True):
                 st.session_state[f"quiz_score_{active_child}"] += 1
                 st.session_state[f"mastered_words_{active_child}"].add(target_word)
-            else:
-                st.error(f"❌ Correct Spelling: **{target_word}**")
+                st.session_state[f"quiz_result_{active_child}"] = "correct"
+                st.rerun()
+
+        with c2:
+            if st.button("❌ Needs Practice", type="secondary", use_container_width=True):
                 st.session_state[f"unfamiliar_words_{active_child}"].add(target_word)
+                st.session_state[f"quiz_result_{active_child}"] = "incorrect"
+                st.rerun()
 
-            st.session_state[f"quiz_checked_{active_child}"] = True
+    else:
+        if st.session_state[f"quiz_result_{active_child}"] == "correct":
+            st.success(f"🌟 Marked Correct! Great job, {active_child}!")
+        else:
+            st.warning(f"💡 Marked for practice! Keep it up, {active_child}!")
 
-with col2:
-    if st.session_state[f"quiz_checked_{active_child}"]:
-        if st.button("➡️ Next Word", type="secondary"):
+        st.write("")
+        if st.button("➡️ Next Word", type="primary", use_container_width=True):
             st.session_state[f"quiz_index_{active_child}"] += 1
             st.session_state[f"quiz_checked_{active_child}"] = False
+            st.session_state[f"quiz_result_{active_child}"] = None
             st.rerun()
