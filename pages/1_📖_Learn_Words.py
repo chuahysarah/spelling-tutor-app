@@ -23,6 +23,7 @@ def local_pinyin(text: str) -> str:
 
 
 def get_api_key() -> str:
+    """Extracts and sanitizes the API key from secrets or session state."""
     key = ""
     if "GEMINI_API_KEY" in st.secrets:
         key = str(st.secrets["GEMINI_API_KEY"])
@@ -46,7 +47,7 @@ For each item, provide:
 3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
 4. sentence: short, relatable daily life context sentence.
 5. spelling_tip: a super fun, child-friendly memory trick or phonics hint! 
-   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth) because...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
+   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth)...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
    - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
 6. pinyin: Chinese tone-marked pinyin or empty for English.
 
@@ -57,29 +58,35 @@ Items: """ + json.dumps(words, ensure_ascii=False)
         "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
     }
     
+    clean_key = api_key.strip().strip("'").strip('"')
     headers = {
         "Content-Type": "application/json",
-        "x-goog-api-key": api_key
+        "x-goog-api-key": clean_key
     }
 
-    urls_to_try = [
-        "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    ]
+    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
 
-    last_err = None
-    for url in urls_to_try:
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=12)
-            if resp.status_code == 200:
-                data = json.loads(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=12)
+        if resp.status_code == 200:
+            raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
                 return (data if isinstance(data, dict) else {}), None
-            else:
-                last_err = resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
-        except Exception as exc:
-            last_err = str(exc)
-
-    return {}, last_err or "Failed to connect to Gemini API."
+        else:
+            # Fallback attempt via URL query param if header fails
+            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+            resp_fb = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
+            if resp_fb.status_code == 200:
+                raw_text = resp_fb.json()["candidates"][0]["content"]["parts"][0]["text"]
+                match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                if match:
+                    data = json.loads(match.group())
+                    return (data if isinstance(data, dict) else {}), None
+            return {}, resp.json().get("error", {}).get("message", f"HTTP {resp.status_code}")
+    except Exception as exc:
+        return {}, str(exc)
 
 
 @st.cache_data(show_spinner=False, max_entries=512, ttl=7200)
@@ -155,12 +162,9 @@ if key and not st.session_state.cached_analysis and words:
         if not err and data:
             st.session_state.cached_analysis = data
         elif err:
-            st.warning(f"Note: Unable to load AI details ({err}).")
+            st.warning(f"Note: Unable to load AI details ({err}). Using standard word details.")
 
 analysis = st.session_state.cached_analysis
-
-if not key:
-    st.warning("⚠️ No Gemini API Key configured in Secrets.")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
@@ -168,18 +172,26 @@ for index, word in enumerate(words):
     with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
         audio_button(word, lang, f"audio-{word}")
         if lang == "English":
-            st.write(f"🧩 **Syllables:** {info.get('syllables', '—')}")
-            st.write(f"💡 **Meaning:** {info.get('meaning', '—')}")
-            st.write(f"💬 **Example:** {info.get('sentence', '—')}")
-            st.write(f"⭐ **Fun Memory Tip:** {info.get('spelling_tip', '—')}")
+            syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
+            meaning = info.get('meaning') or f"The English word '{word}'."
+            sentence = info.get('sentence') or f"Please write the word '{word}' in your notebook."
+            tip = info.get('spelling_tip') or f"Break '{word}' down into smaller letter chunks to remember!"
+            
+            st.write(f"🧩 **Syllables:** {syllables}")
+            st.write(f"💡 **Meaning:** {meaning}")
+            st.write(f"💬 **Example:** {sentence}")
+            st.write(f"⭐ **Fun Memory Tip:** {tip}")
         else:
             py = str(info.get("pinyin") or local_pinyin(word))
+            meaning = info.get('meaning') or f"Chinese word / 词语: {word}"
+            sentence = info.get("sentence") or f"今天我们要学习 '{word}' 这个词。"
+            tip = info.get('spelling_tip') or f"Observe the stroke order and practice writing '{word}' step-by-step!"
+
             st.write(f"🗣️ **Pinyin:** `{py}`")
             st.write("✍️ **Stroke Order Animation:**")
             render_hanzi_animations(word)
-            st.write(f"💡 **Meaning:** {info.get('meaning', '—')}")
-            sentence = info.get("sentence", "—")
+            st.write(f"💡 **Meaning:** {meaning}")
             st.write(f"💬 **Example:** {sentence}")
-            if sentence and sentence != "—":
+            if sentence:
                 audio_button(sentence, "Chinese", f"sentence-{word}")
-            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {info.get('spelling_tip', '—')}")
+            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
