@@ -8,11 +8,6 @@ st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", la
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
-DEFAULT_LISTS = {
-    "Week 1: School & Friends": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
-    "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
-}
-
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -68,27 +63,39 @@ def fetch_remote_lists(child_name: str = "") -> dict[str, str]:
             resp = requests.get(API_URL, params=params, allow_redirects=True, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, dict) and data:
+                if isinstance(data, dict):
                     return data
         except Exception:
             pass
-    return DEFAULT_LISTS
+    return {}
 
 
-def save_remote_list(title: str, words: str, child_name: str) -> None:
+def save_remote_list(title: str, words: str, child_name: str) -> bool:
     if API_URL:
         try:
-            requests.post(API_URL, json={"action": "save", "title": title, "words": words, "child_name": child_name}, timeout=5)
+            resp = requests.post(
+                API_URL, 
+                json={"action": "save", "title": title, "words": words, "child_name": child_name}, 
+                timeout=8
+            )
+            return resp.status_code == 200
         except Exception as e:
             st.error(f"Failed to sync save to database: {e}")
+    return False
 
 
-def delete_remote_list(title: str, child_name: str) -> None:
+def delete_remote_list(title: str, child_name: str) -> bool:
     if API_URL:
         try:
-            requests.post(API_URL, json={"action": "delete", "title": title, "child_name": child_name}, timeout=5)
+            resp = requests.post(
+                API_URL, 
+                json={"action": "delete", "title": title, "child_name": child_name}, 
+                timeout=8
+            )
+            return resp.status_code == 200
         except Exception as e:
             st.error(f"Failed to sync delete to database: {e}")
+    return False
 
 
 def fetch_child_profiles() -> list[str]:
@@ -117,12 +124,6 @@ if "children" not in st.session_state:
 
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
-
-active_child = st.session_state.active_child
-
-fetched = fetch_remote_lists(active_child)
-if f"archived_lists_{active_child}" not in st.session_state or not st.session_state[f"archived_lists_{active_child}"]:
-    st.session_state[f"archived_lists_{active_child}"] = fetched
 
 if "parent_unlocked" not in st.session_state:
     st.session_state.parent_unlocked = False
@@ -251,27 +252,31 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
             title_clean = new_week_title.strip()
             words_clean = new_week_words.strip()
             if title_clean and words_clean:
-                save_remote_list(title_clean, words_clean, target_child_for_list)
-                st.session_state.parent_unlocked = False
-                st.success(f"Saved '{title_clean}' for {target_child_for_list} successfully!")
-                st.rerun()
+                if save_remote_list(title_clean, words_clean, target_child_for_list):
+                    st.success(f"Saved '{title_clean}' for {target_child_for_list}!")
+                    st.session_state.parent_unlocked = False
+                    st.rerun()
+                else:
+                    st.error("Could not save to Google Sheets. Please check your connection or Web App deployment.")
             else:
                 st.warning("Please enter both a title and words before saving.")
 
         st.divider()
 
         st.write("### 🗑️ Delete an Existing List")
-        child_lists = fetch_remote_lists(active_child)
-        if child_lists:
+        active_child_lists = fetch_remote_lists(active_child)
+        if active_child_lists:
             list_to_delete = st.selectbox(
                 f"Select list to delete for {active_child}:",
-                options=list(child_lists.keys()),
+                options=list(active_child_lists.keys()),
                 key="delete_list_select"
             )
             if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
-                delete_remote_list(list_to_delete, active_child)
-                st.session_state.parent_unlocked = False
-                st.success(f"Deleted '{list_to_delete}'!")
-                st.rerun()
+                if delete_remote_list(list_to_delete, active_child):
+                    st.success(f"Deleted '{list_to_delete}' successfully!")
+                    st.session_state.parent_unlocked = False
+                    st.rerun()
+                else:
+                    st.error("Failed to delete from Google Sheets.")
         else:
-            st.caption("No archived lists to delete for this child.")
+            st.caption(f"No spelling lists created for {active_child} yet.")
