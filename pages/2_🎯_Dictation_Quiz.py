@@ -51,10 +51,11 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends handwritten canvas drawing to Gemini AI for vision auto-grading."""
+    """Sends handwritten canvas drawing directly to Gemini AI for vision auto-grading."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
+        # Convert canvas array to RGB Image
         img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
         buffered = io.BytesIO()
         img.save(buffered, format="JPEG")
@@ -76,15 +77,15 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        resp = requests.post(url, json=payload, timeout=8)
+        resp = requests.post(url, json=payload, timeout=10)
         if resp.status_code == 200:
             res_json = resp.json()
             text_resp = res_json['candidates'][0]['content']['parts'][0]['text']
             match = re.search(r'\{.*\}', text_resp, re.DOTALL)
             if match:
                 parsed = json.loads(match.group())
-                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated!")
-    except Exception:
+                return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
+    except Exception as e:
         pass
     return False, "Could not evaluate handwriting automatically."
 
@@ -163,7 +164,7 @@ if st.button("🔊 Play Word Sound", type="secondary"):
 
 st.write("---")
 
-# Dedicated Drawing Canvas
+# Dedicated Drawing Canvas with update_streamlit enabled for real-time syncing
 st.subheader("✏️ Handwriting Practice Pad")
 st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
 
@@ -175,6 +176,7 @@ canvas_result = st_canvas(
     height=260,
     width=340,
     drawing_mode="freedraw",
+    update_streamlit=True,
     key=f"canvas_{current_idx}"
 )
 
@@ -187,37 +189,15 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Handwriting", type="primary"):
         if is_chinese:
-            has_strokes = False
             img_data = None
-
-            # 1. Check path objects in json_data
-            if canvas_result is not None and canvas_result.json_data is not None:
-                objects = canvas_result.json_data.get("objects", [])
-                if len(objects) > 0:
-                    has_strokes = True
-
-            # 2. Check image array safely if available
             try:
-                if canvas_result is not None and canvas_result.image_data is not None:
+                if canvas_result is not None:
                     img_data = canvas_result.image_data
-                    if isinstance(img_data, np.ndarray) and img_data.size > 0:
-                        # If any pixel in the canvas is non-white (drawn stroke exists)
-                        if np.any(img_data[:, :, :3] < 200):
-                            has_strokes = True
             except Exception:
-                pass
+                img_data = None
 
-            # Fallback: if strokes are detected via JSON objects but img_data couldn't be read directly
-            if has_strokes and img_data is None:
-                try:
-                    img_data = canvas_result.image_data
-                except Exception:
-                    img_data = None
-
-            if not has_strokes or img_data is None:
-                st.warning("✏️ Drawing not detected yet! Please draw your character clearly and lift your finger/mouse before clicking Grade.")
-            elif GEMINI_API_KEY:
-                with st.spinner("Analyzing Chinese handwriting..."):
+            if GEMINI_API_KEY and img_data is not None:
+                with st.spinner("Analyzing Chinese handwriting with Gemini AI..."):
                     is_correct, feedback = grade_handwriting_with_gemini(
                         img_data, target_word, GEMINI_API_KEY
                     )
