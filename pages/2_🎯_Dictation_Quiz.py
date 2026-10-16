@@ -45,6 +45,7 @@ h3 { font-size: 1.8rem !important; color: #0f766e !important; }
 """, unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_available_lists(child_name: str = "") -> dict[str, str]:
     if API_URL:
         try:
@@ -61,6 +62,7 @@ def fetch_available_lists(child_name: str = "") -> dict[str, str]:
     return {}
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_child_profiles() -> list[str]:
     if API_URL:
         try:
@@ -78,6 +80,7 @@ def sync_child_profiles(children: list[str]) -> None:
     if API_URL:
         try:
             requests.post(API_URL, json={"action": "save_profiles", "children": children}, timeout=5)
+            st.cache_data.clear()
         except Exception as e:
             st.error(f"Failed to sync profiles: {e}")
 
@@ -97,18 +100,24 @@ def log_completed_quiz(child_name: str, week_title: str, score: int, total_words
                 "unfamiliar": ", ".join(unfamiliar) if unfamiliar else "None"
             }
             requests.post(API_URL, json=payload, timeout=5)
+            st.cache_data.clear()
         except Exception as e:
             st.error(f"Failed to log quiz attempt: {e}")
+
+
+@st.cache_data(show_spinner=False, max_entries=256, ttl=3600)
+def generate_speech_audio(text: str, lang: str) -> bytes:
+    fp = io.BytesIO()
+    tts = gTTS(text=text, lang=lang, slow=False)
+    tts.write_to_fp(fp)
+    return fp.getvalue()
 
 
 def speak_text(text: str):
     try:
         lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
-        tts = gTTS(text=text, lang=lang, slow=False)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        st.audio(fp, format="audio/mp3", autoplay=True)
+        audio_bytes = generate_speech_audio(text, lang)
+        st.audio(audio_bytes, format="audio/mp3", autoplay=True)
     except Exception:
         st.warning("Audio playback failed.")
 
@@ -297,7 +306,6 @@ if is_chinese:
 
     with col_pad:
         st.markdown("### ✏️ Your Chinese Writing Pad")
-        # update_streamlit=False eliminates mid-stroke lag entirely
         canvas_result = st_canvas(
             fill_color="rgba(255, 255, 255, 0)",
             stroke_width=7,
