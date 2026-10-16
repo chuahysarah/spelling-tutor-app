@@ -98,6 +98,52 @@ h3, [data-testid="stMarkdownContainer"] h3 {
     color:var(--ink) !important; border:2px solid #6b4e00 !important;
     border-radius:12px !important;
 }
+/* The collapsed-sidebar control is easy to miss on phones; make its action explicit. */
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
+button[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"] {
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:.5rem !important;
+    min-width:8.25rem !important;
+    min-height:3rem !important;
+    padding:.55rem .8rem !important;
+    border:2px solid #ffc000 !important;
+    border-radius:14px !important;
+    background:#173f91 !important;
+    color:#ffffff !important;
+    box-shadow:0 3px 0 #12336f,0 5px 12px rgba(17,24,39,.2) !important;
+    cursor:pointer !important;
+}
+[data-testid="stSidebarCollapsedControl"] button::after,
+[data-testid="collapsedControl"] button::after,
+button[data-testid="stSidebarCollapsedControl"]::after,
+button[data-testid="collapsedControl"]::after {
+    content:"Open menu";
+    color:#ffffff !important;
+    font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
+    font-size:1rem !important;
+    font-weight:700 !important;
+    white-space:nowrap;
+}
+[data-testid="stSidebarCollapsedControl"] button svg,
+[data-testid="collapsedControl"] button svg,
+button[data-testid="stSidebarCollapsedControl"] svg,
+button[data-testid="collapsedControl"] svg {
+    width:1.25rem !important;
+    height:1.25rem !important;
+    color:#ffffff !important;
+    stroke:#ffffff !important;
+}
+[data-testid="stSidebarCollapsedControl"] button:hover,
+[data-testid="collapsedControl"] button:hover,
+button[data-testid="stSidebarCollapsedControl"]:hover,
+button[data-testid="collapsedControl"]:hover {
+    background:#12336f !important;
+    transform:translateY(-1px);
+}
 [data-testid="stSidebar"] .stSelectbox > div > div {
     background:#fff !important; border:2px solid var(--control-border) !important;
     border-radius:16px !important;
