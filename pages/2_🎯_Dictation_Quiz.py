@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import datetime
+import io
 import json
 import re
 import requests
 import streamlit as st
 from gtts import gTTS
-import io
+from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
-st.title("🎯 Spelling Dictation Quiz")
+st.title("🎯 Spelling & Chinese Dictation Quiz")
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
@@ -31,7 +32,7 @@ def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: 
             }
             requests.post(API_URL, json=payload, timeout=5)
         except Exception as e:
-            st.error(f"Failed to log quiz attempt to database: {e}")
+            st.error(f"Failed to log quiz attempt: {e}")
 
 
 def speak_text(text: str):
@@ -43,7 +44,7 @@ def speak_text(text: str):
         tts.write_to_fp(fp)
         fp.seek(0)
         st.audio(fp, format="audio/mp3", autoplay=True)
-    except Exception as e:
+    except Exception:
         st.warning("Audio playback failed.")
 
 
@@ -92,7 +93,6 @@ if current_idx >= total_q:
     final_score = st.session_state.quiz_score
     st.metric(label="Final Score", value=f"{final_score} / {total_q}")
 
-    # Log results to Google Sheets once
     if not st.session_state.quiz_logged:
         log_completed_quiz(
             week_title=active_week,
@@ -114,6 +114,7 @@ if current_idx >= total_q:
 
 # ACTIVE QUIZ QUESTION SCREEN
 target_word = quiz_words[current_idx]
+is_chinese = bool(re.search(r'[\u4e00-\u9fff]', target_word))
 
 st.progress((current_idx) / total_q)
 st.caption(f"Question {current_idx + 1} of {total_q} — **{active_week}**")
@@ -122,21 +123,47 @@ st.write("### 🔊 Listen and write down the word:")
 if st.button("🔊 Play Word Sound", type="secondary"):
     speak_text(target_word)
 
-user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{current_idx}")
+st.write("---")
+
+# HANDWRITING PAD SECTION (Drawing canvas for both Chinese & English)
+st.subheader("✏️ Handwriting Practice Pad")
+st.caption("Use your touchscreen, finger, or mouse to write your answer directly on the canvas below:")
+
+canvas_result = st_canvas(
+    fill_color="rgba(255, 255, 255, 0)",
+    stroke_width=4,
+    stroke_color="#1e293b",
+    background_color="#f8fafc",
+    height=220,
+    width=340,
+    drawing_mode="freedraw",
+    key=f"canvas_{current_idx}"
+)
+
+# Text Verification Input
+user_answer = st.text_input("Type or verify your answer here for auto-grading:", key=f"quiz_ans_{current_idx}")
+
+# Reference Check Box (Helpful for Chinese Strokes & Character Reference)
+with st.expander("💡 Need a Hint / Reference Check?"):
+    if is_chinese:
+        st.write(f"**Target Character:** {target_word}")
+        st.caption("Practice writing the strokes on the canvas above!")
+    else:
+        st.write(f"**Hint / First Letter:** {target_word[0].upper()}...")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("✅ Submit Answer", type="primary"):
+    if st.button("✅ Submit & Grade Answer", type="primary"):
         clean_user = user_answer.strip().casefold()
         clean_target = target_word.strip().casefold()
 
         if clean_user == clean_target:
-            st.success("🌟 Correct! Awesome spelling!")
+            st.success(f"🌟 Correct! Awesome job: **{target_word}**")
             st.session_state.quiz_score += 1
             st.session_state.mastered_words.add(target_word)
         else:
-            st.error(f"❌ Almost! The correct spelling is: **{target_word}**")
+            st.error(f"❌ Almost! The correct word is: **{target_word}**")
             st.session_state.unfamiliar_words.add(target_word)
 
         st.session_state.quiz_checked = True
