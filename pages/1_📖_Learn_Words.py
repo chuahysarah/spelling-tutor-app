@@ -4,6 +4,7 @@ import json
 import os
 import re
 from typing import Any
+from html import escape
 
 import requests
 import streamlit as st
@@ -15,7 +16,7 @@ st.set_page_config(
     page_title="Learn Words 📖",
     page_icon="📖",
     layout="centered",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
@@ -56,69 +57,209 @@ CHINESE_MEMORY_DICT = {
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
-:root { --ink:#26324b; --blue:#2864dc; --purple:#7652d6; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0; --sky:#e7f5ff; }
-html, body, [class*="css"], button, input, select, textarea {
-    font-family:'Fredoka',sans-serif !important; color:var(--ink);
+/* Visual theme only: no changes to word processing, audio, or Hanzi Writer logic. */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --ink:#111827; --body:#1f2937; --blue:#173f91; --blue-dark:#12336f;
+    --purple:#4b1d82; --sun:#ffc94a; --cream:#fffefa;
+    --surface:#ffffff; --focus:#ffc000; --control-border:#64748b;
 }
-html, body, [data-testid="stAppViewContainer"] { background:#fffaf0 !important; }
-[data-testid="stHeader"] { background:rgba(255,250,240,.88) !important; }
-[data-testid="stMainBlockContainer"] { max-width:1100px; padding-top:2rem; }
-h1 { color:#3158b8 !important; font-weight:700 !important; letter-spacing:-.035em; }
-h2 { color:#6746bd !important; font-weight:700 !important; }
-h3 { color:#168d7c !important; font-weight:700 !important; }
-.stButton > button {
-    min-height:3.2rem; border:0 !important; border-radius:18px !important;
-    background:linear-gradient(115deg,#ff795e 0%,#ff9f54 100%) !important;
-    color:#fff !important; font-size:1.16rem !important; font-weight:700 !important;
-    padding:.65rem 1.25rem !important; box-shadow:0 5px 0 #df624b,0 9px 18px rgba(223,98,75,.16) !important;
-    transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stMarkdownContainer"], button, input, textarea, select {
+    font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
 }
-.stButton > button:hover { transform:translateY(-2px); filter:saturate(1.12); box-shadow:0 7px 0 #df624b,0 12px 22px rgba(223,98,75,.2) !important; }
-.stButton > button:active { transform:translateY(2px); box-shadow:0 2px 0 #df624b !important; }
-.stButton > button:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid #3158b8 !important; outline-offset:3px; }
+[data-testid="stAppViewContainer"], [data-testid="stMain"] {
+    background:var(--cream) !important;
+    color:var(--ink) !important;
+}
+[data-testid="stHeader"] { background:var(--cream) !important; }
+[data-testid="stMainBlockContainer"] { max-width:1100px; padding:2rem 1rem; }
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li {
+    font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
+    color:var(--body) !important;
+    font-size:1.125rem; font-weight:500; line-height:1.5;
+}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
+    color:var(--body) !important; opacity:1 !important;
+    font-size:1rem !important;
+}
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 {
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    font-weight:800 !important; line-height:1.25;
+}
+[data-testid="stMarkdownContainer"] h1 { color:var(--blue) !important; font-size:2rem !important; }
+[data-testid="stMarkdownContainer"] h2 { color:var(--purple) !important; font-size:1.625rem !important; }
+[data-testid="stMarkdownContainer"] h3 { color:#07594f !important; font-size:1.375rem !important; }
+[data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label {
+    color:var(--ink) !important; font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
+    font-size:1.125rem !important; font-weight:700 !important;
+}
+
+.hero {
+    padding:2rem 1.5rem; border-radius:30px; margin:0 0 1.5rem;
+    background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 48%,#d9eeff 100%);
+    border:2px solid #c6a14e; text-align:center;
+    box-shadow:0 12px 30px rgba(62,83,132,.12);
+}
+[data-testid="stMarkdownContainer"] .hero h1 {
+    font-size:2.5rem !important; line-height:1.25; margin:0;
+}
+.child-name {
+    display:inline-block; max-width:100%; overflow-wrap:anywhere;
+    margin:0 .08em; padding:0 .32em; border-radius:.38em;
+    background:#ffc94a; color:#111827 !important;
+    font-weight:800; box-shadow:0 3px 0 #6b4e00;
+    transform-origin:center;
+    animation:child-name-pop .5s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes child-name-pop {
+    0% { transform:translateY(.2em) scale(.9); }
+    70% { transform:translateY(-.04em) scale(1.04); }
+    100% { transform:translateY(0) scale(1); }
+}
+
+/* Text and labels inside a Streamlit button need their own color rule.
+   Setting only button{color:white} can leave nested Markdown text dark. */
+[data-testid="stButton"] button,
+[data-testid="stFormSubmitButton"] button {
+    min-height:48px; padding:.65rem 1.15rem !important;
+    border-radius:16px !important; border:2px solid var(--blue) !important;
+    background:var(--blue) !important; color:#ffffff !important;
+    font-size:1.125rem !important; font-weight:700 !important;
+    white-space:normal;
+    transition:transform .15s ease,box-shadow .15s ease;
+}
+[data-testid="stButton"] button p,
+[data-testid="stButton"] button span,
+[data-testid="stFormSubmitButton"] button p,
+[data-testid="stFormSubmitButton"] button span {
+    color:#ffffff !important;
+    font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
+    font-size:1.125rem !important; font-weight:700 !important;
+}
+[data-testid="stButton"] button:hover,
+[data-testid="stFormSubmitButton"] button:hover {
+    background:var(--blue-dark) !important; transform:translateY(-2px);
+    box-shadow:0 6px 14px rgba(23,63,145,.18);
+}
+[data-testid="stButton"] button:active { transform:scale(.985); }
+
 [data-testid="stSidebar"] {
     background:linear-gradient(165deg,#e6f4ff 0%,#f0eaff 55%,#fff0e8 100%) !important;
     border-right:3px solid #d6e5ff !important;
 }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#34415c; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:var(--body) !important; }
 [data-testid="stSidebarCollapseButton"] button {
-    background:linear-gradient(135deg,#ffd34f,#ffad52) !important; color:#26324b !important;
-    border:2px solid #efa83a !important; border-radius:12px !important;
+    min-width:48px; min-height:48px; border-radius:12px !important;
+    background:#ffc94a !important; color:var(--ink) !important;
+    border:2px solid #6b4e00 !important;
 }
-[data-testid="stSidebar"] .stSelectbox > div > div {
-    background:#fff !important; border:2px solid #b8d9ff !important; border-radius:16px !important;
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
+button[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"] {
+    display:flex !important; align-items:center !important; justify-content:center !important;
+    gap:.5rem !important; min-width:8.25rem !important; min-height:3rem !important;
+    padding:.55rem .8rem !important; border-radius:14px !important;
+    border:2px solid #ffc000 !important; background:#173f91 !important;
+    color:#ffffff !important; cursor:pointer;
+    box-shadow:0 3px 0 #12336f,0 5px 12px rgba(17,24,39,.2);
 }
-[data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stSelectbox"] > div > div {
-    border-radius:14px !important; border-color:#bdd8fa !important; background:#fff !important;
+[data-testid="stSidebarCollapsedControl"] button::after,
+[data-testid="collapsedControl"] button::after,
+button[data-testid="stSidebarCollapsedControl"]::after,
+button[data-testid="collapsedControl"]::after {
+    content:"Open menu"; color:#ffffff;
+    font:700 1rem 'Nunito','Trebuchet MS',Arial,sans-serif;
+    white-space:nowrap;
 }
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="collapsedControl"] svg {
+    width:1.25rem !important; height:1.25rem !important; color:white !important;
+}
+
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div {
+    background:#ffffff !important; color:var(--ink) !important;
+    border:2px solid var(--control-border) !important;
+    border-radius:14px !important; min-height:48px;
+    font-size:1.125rem !important;
+}
+[data-testid="stSelectbox"] [data-baseweb="select"] input {
+    color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important;
+}
+[data-testid="stSelectbox"] [data-baseweb="select"] [role="combobox"] {
+    color:var(--ink) !important;
+}
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder { color:#374151 !important; opacity:1; }
+[role="listbox"] { background:#ffffff !important; color:#111827 !important; }
+[role="option"] { color:#111827 !important; }
+
+/* Word panels: subtle pastel surfaces with dark text. */
 [data-testid="stExpander"] {
-    background:rgba(255,255,255,.88); border:2px solid #e5dcfb !important; border-radius:18px !important;
+    border:2px solid #64748b !important; border-radius:18px !important;
+    background:#ffffff !important; margin-bottom:.75rem;
+    box-shadow:0 5px 14px rgba(53,86,144,.08);
 }
-[data-testid="stAlert"] { border-radius:16px !important; }
+[data-testid="stExpander"] summary {
+    min-height:48px; border-radius:16px;
+    background:#f0eaff !important; color:#111827 !important;
+}
+[data-testid="stExpander"] summary p {
+    color:#173f91 !important; font-size:1.3rem !important;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    font-weight:800 !important; overflow-wrap:anywhere;
+}
+[data-testid="stExpander"] summary:hover { background:#e6e0fb !important; }
+[data-testid="stExpanderDetails"] { padding:1rem !important; }
+[data-testid="stMain"] [data-testid="stExpander"] {
+    animation:word-panel-rise .35s ease-out both;
+}
+@keyframes word-panel-rise {
+    from { transform:translateY(6px); }
+    to { transform:translateY(0); }
+}
+[data-testid="stMarkdownContainer"] code {
+    color:#4b1d82 !important; background:#f0eaff !important;
+    font-size:1.0625rem; overflow-wrap:anywhere;
+}
+[data-testid="stAudio"] { width:100%; max-width:100%; margin:.35rem 0 .75rem; }
+[data-testid="stAlert"] { background:#eff6ff !important; border-radius:16px !important; color:#111827 !important; }
 hr { border-color:#e6ddf7 !important; }
-.hero {
-    position:relative; overflow:hidden; padding:2.4rem 1.8rem; border-radius:30px;
-    background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 48%,#d9eeff 100%);
-    border:3px solid #fff; text-align:center; margin:0 0 1.7rem;
-    box-shadow:0 12px 30px rgba(62,83,132,.12),inset 0 0 0 2px rgba(255,198,76,.6);
+
+/* Keep the original native interactions and focus behavior. */
+button:focus-visible, input:focus-visible, textarea:focus-visible,
+select:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+    outline:3px solid #ffc000 !important; outline-offset:3px !important;
+    box-shadow:0 0 0 2px #111827 !important;
 }
-.hero h1 { color:#3158b8 !important; margin-bottom:.55rem; font-size:2.5rem !important; }
-.hero p { color:#39445d; font-size:1.2rem; margin:0; }
-.action-card {
-    padding:1.45rem 1.2rem; min-height:155px; border-radius:24px;
-    border:2px solid #fff; text-align:center;
-    background:linear-gradient(145deg,#fff 0%,#eff8ff 100%);
-    box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff;
-}
-.action-card h3 { font-size:1.65rem; color:#3158b8; margin-bottom:.4rem; }
-.action-card p { font-size:1.05rem; color:#4b5872; }
 @media (max-width:640px) {
-    [data-testid="stMainBlockContainer"] { padding:1.1rem 1rem 2rem; }
-    .hero { padding:1.6rem 1rem; border-radius:22px; }
-    .hero h1 { font-size:2rem !important; }
+    [data-testid="stMainBlockContainer"] { padding:.75rem .75rem 1.5rem; }
+    .hero { padding:1.25rem 1rem; border-radius:20px; margin-bottom:1rem; }
+    [data-testid="stMarkdownContainer"] .hero h1 {
+        font-size:clamp(1.6rem,7vw,2rem) !important;
+    }
+    .child-name { padding:0 .24em; }
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li { font-size:1.0625rem; line-height:1.45; }
+    [data-testid="stButton"] button { width:100%; min-height:48px; }
+    [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
+    [data-testid="stSelectbox"] [role="combobox"] { min-height:48px; font-size:18px !important; }
+    [data-testid="stExpanderDetails"] { padding:.75rem !important; }
 }
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
+@media (prefers-reduced-motion:reduce) {
+    *,*::before,*::after {
+        scroll-behavior:auto !important; transition:none !important;
+        animation:none !important; transform:none !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -325,7 +466,13 @@ with st.sidebar:
 
 active_child = st.session_state.active_child
 
-st.title(f"📖 Hi {active_child}! Let's Learn Our Words!")
+st.markdown(
+    '<div class="hero">'
+    '<h1>📖 Hi <span class="child-name">'
+    + escape(str(active_child))
+    + "!</span> Let's Learn Our Words!</h1></div>",
+    unsafe_allow_html=True,
+)
 
 available_lists = fetch_available_lists(active_child)
 list_titles = list(available_lists.keys())
