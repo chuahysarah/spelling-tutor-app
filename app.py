@@ -142,6 +142,40 @@ hr { border-color:#e6ddf7 !important; }
 .action-card h3 { font-size:1.5rem !important; color:var(--blue) !important; margin-bottom:.4rem; }
 .action-card p { font-size:1.05rem; color:var(--body) !important; }
 
+/* Home cards are single, full-card buttons: one obvious tap and keyboard target. */
+.st-key-home_learn_card button,
+.st-key-home_quiz_card button,
+.st-key-home_garden_card button {
+    display:flex; width:100%; min-height:155px;
+    align-items:center; justify-content:center;
+    padding:1.25rem !important; white-space:normal;
+    text-align:center; cursor:pointer;
+    background:linear-gradient(145deg,#ffffff 0%,#eff8ff 100%) !important;
+    color:var(--ink) !important;
+    border:2px solid #64748b !important;
+    border-radius:24px !important;
+    box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff !important;
+}
+.st-key-home_learn_card button:hover,
+.st-key-home_quiz_card button:hover,
+.st-key-home_garden_card button:hover {
+    background:linear-gradient(145deg,#ffffff 0%,#e6f4ff 100%) !important;
+    border-color:var(--blue) !important;
+    transform:translateY(-2px);
+}
+.st-key-home_learn_card button p,
+.st-key-home_quiz_card button p,
+.st-key-home_garden_card button p {
+    color:var(--body) !important; font-size:1rem !important;
+    line-height:1.4; font-weight:500;
+}
+.st-key-home_learn_card button strong,
+.st-key-home_quiz_card button strong,
+.st-key-home_garden_card button strong {
+    display:block; color:var(--blue) !important;
+    font-size:1.4rem; font-weight:700;
+}
+
 /* Visible keyboard focus and reduced-motion support. */
 :where(button,input,textarea,select,a,[tabindex]):focus-visible {
     outline:3px solid var(--focus) !important; outline-offset:3px !important;
@@ -339,35 +373,32 @@ st.write(f"### 🚀 What would **{active_child}** like to do?")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("""
-    <div class="action-card">
-        <h3>📖 Learn Words</h3>
-        <p>Explore meanings, pinyin, stroke orders & memory tricks!</p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.write("")
-    if st.button(f"👉 Learn Words for {active_child}", type="primary", use_container_width=True):
+    if st.button(
+        "**📖 Learn Words**\n\nExplore meanings, pinyin, stroke orders & memory tricks!",
+        key="home_learn_card",
+        type="secondary",
+        use_container_width=True,
+        help=f"Open Learn Words for {active_child}",
+    ):
         st.switch_page("pages/1_📖_Learn_Words.py")
 
 with col2:
-    st.markdown("""
-    <div class="action-card">
-        <h3>🎯 Dictation Quiz</h3>
-        <p>Listen to audio & test your handwriting!</p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.write("")
-    if st.button(f"👉 Start Dictation Quiz", type="primary", use_container_width=True):
+    if st.button(
+        "**🎯 Dictation Quiz**\n\nListen to audio & test your handwriting!",
+        key="home_quiz_card",
+        type="secondary",
+        use_container_width=True,
+        help="Open Dictation Quiz",
+    ):
         st.switch_page("pages/2_🎯_Dictation_Quiz.py")
 
-st.markdown("""
-<div class="action-card">
-    <h3>🌱 Word Garden</h3>
-    <p>See your stars and watch mastered words grow into flowers!</p>
-</div>
-""", unsafe_allow_html=True)
-st.write("")
-if st.button("🌱 Visit Your Word Garden", type="primary", use_container_width=True):
+if st.button(
+    "**🌱 Word Garden**\n\nSee your stars and watch mastered words grow into flowers!",
+    key="home_garden_card",
+    type="secondary",
+    use_container_width=True,
+    help="Open your Word Garden",
+):
     st.switch_page("pages/4_🌱_Word_Garden.py")
 
 st.divider()
