@@ -54,6 +54,26 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
+def get_available_models(api_key: str) -> list[str]:
+    """Dynamically query Google to get active model names for this API key."""
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            models_data = resp.json().get("models", [])
+            valid_models = []
+            for m in models_data:
+                name = m.get("name", "").replace("models/", "")
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods and "flash" in name.lower():
+                    valid_models.append(name)
+            if valid_models:
+                return valid_models
+    except Exception:
+        pass
+    return ["gemini-2.5-flash", "gemini-1.5-flash-latest"]
+
+
 def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[str, Any]], str | None]:
     if not api_key:
         return {}, "No API key configured."
@@ -65,8 +85,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
         "generationConfig": {"response_mime_type": "application/json", "temperature": 0.2}
     }
     
-    # Try active Gemini models in order
-    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"]
+    models_to_try = get_available_models(api_key)
     last_err = None
 
     for model in models_to_try:
