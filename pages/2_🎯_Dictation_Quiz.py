@@ -15,12 +15,13 @@ from streamlit_drawable_canvas import st_canvas
 st.set_page_config(page_title="Dictation Quiz 🎯", page_icon="🎯", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
-GEMINI_API_KEY = st.session_state.get("api_key", "") or st.secrets.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = (st.session_state.get("api_key", "") or st.secrets.get("GEMINI_API_KEY", "")).strip()
 
 st.title("🎯 Spelling & Chinese Dictation Quiz")
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
+    """Logs the final completed quiz stats into the Google Sheets History tab."""
     if API_URL:
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -39,6 +40,7 @@ def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: 
 
 
 def speak_text(text: str):
+    """Plays audio for English or Chinese target words."""
     try:
         lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -51,11 +53,11 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends handwritten canvas drawing directly to Gemini AI for vision auto-grading."""
+    """Sends the drawn canvas image directly to Gemini 1.5 Flash for vision auto-grading."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
-        # Convert canvas array to RGB Image
+        # Convert canvas array to RGB JPEG image
         img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
         buffered = io.BytesIO()
         img.save(buffered, format="JPEG")
@@ -64,7 +66,7 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
         prompt = (
             f"You are evaluating a child's handwritten Chinese character. "
             f"The intended target character is '{target_char}'. "
-            f"Analyze the image strokes and respond strictly in valid JSON format with two keys: "
+            f"Analyze the drawing image and respond strictly in valid JSON format with two keys: "
             f"'is_correct' (boolean: true or false) and 'feedback' (string: short encouraging feedback in English)."
         )
 
@@ -164,7 +166,7 @@ if st.button("🔊 Play Word Sound", type="secondary"):
 
 st.write("---")
 
-# Dedicated Drawing Canvas with update_streamlit enabled for real-time syncing
+# Dedicated Drawing Canvas
 st.subheader("✏️ Handwriting Practice Pad")
 st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
 
@@ -187,7 +189,7 @@ if not is_chinese:
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("✅ Grade Handwriting", type="primary"):
+    if st.button("✅ Grade Answer", type="primary"):
         if is_chinese:
             img_data = None
             try:
@@ -196,7 +198,8 @@ with col1:
             except Exception:
                 img_data = None
 
-            if GEMINI_API_KEY and img_data is not None:
+            # Accepts all API key formats (both AIzaSy... and AQ... keys)
+            if GEMINI_API_KEY and len(GEMINI_API_KEY) > 10 and img_data is not None:
                 with st.spinner("Analyzing Chinese handwriting with Gemini AI..."):
                     is_correct, feedback = grade_handwriting_with_gemini(
                         img_data, target_word, GEMINI_API_KEY
