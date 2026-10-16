@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 import streamlit as st
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
+
+DATA_FILE = "weekly_lists.json"
 
 st.markdown("""
 <style>
@@ -26,6 +30,28 @@ html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
 """, unsafe_allow_html=True)
 
 
+def load_persistent_lists() -> dict[str, str]:
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # Default initial fallback list
+    return {
+        "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
+        "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
+    }
+
+
+def save_persistent_lists(data: dict[str, str]) -> None:
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Failed to save data: {e}")
+
+
 def normalize_words(raw: str) -> list[str]:
     seen: set[str] = set()
     result = []
@@ -37,12 +63,9 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-# Initialize Persistent Weekly Archive in Session State
+# Load Permanent Archive from JSON file into Session State
 if "archived_lists" not in st.session_state:
-    st.session_state.archived_lists = {
-        "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
-        "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
-    }
+    st.session_state.archived_lists = load_persistent_lists()
 
 if "active_week" not in st.session_state or st.session_state.active_week not in st.session_state.archived_lists:
     if st.session_state.archived_lists:
@@ -92,7 +115,7 @@ else:
     st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
 
 # Parent Section: PIN Locked Area
-PARENT_PIN = "6666"  # PIN updated to 6666
+PARENT_PIN = "6666"
 
 with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
     st.caption("Grown-ups only! Enter PIN to unlock management controls.")
@@ -107,9 +130,11 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
         new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
         new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
         
-        if st.button("💾 Save to Weekly Archive", type="primary"):
+        if st.button("💾 Save Permanently to Archive", type="primary"):
             if new_week_title.strip() and new_week_words.strip():
                 st.session_state.archived_lists[new_week_title.strip()] = new_week_words.strip()
+                save_persistent_lists(st.session_state.archived_lists)  # Saves to weekly_lists.json!
+                
                 st.session_state.active_week = new_week_title.strip()
                 st.session_state.raw_words = new_week_words.strip()
                 st.session_state.quiz_words = normalize_words(new_week_words.strip())
@@ -117,7 +142,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 st.session_state.quiz_score = 0
                 st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
-                st.success(f"🎉 Saved '{new_week_title}' to the archive!")
+                st.success(f"🎉 Saved '{new_week_title}' permanently!")
                 st.rerun()
             else:
                 st.warning("Please enter both a title and words before saving.")
@@ -134,9 +159,9 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
             )
             if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
                 del st.session_state.archived_lists[list_to_delete]
+                save_persistent_lists(st.session_state.archived_lists)  # Save deletion to JSON!
                 st.success(f"Deleted '{list_to_delete}'!")
                 
-                # Reset active week if deleted
                 if list_to_delete == st.session_state.active_week:
                     if st.session_state.archived_lists:
                         st.session_state.active_week = list(st.session_state.archived_lists.keys())[0]
