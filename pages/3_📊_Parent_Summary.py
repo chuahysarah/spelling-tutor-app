@@ -4,7 +4,12 @@ import json
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Parent Dashboard 📊", page_icon="📊", layout="centered")
+st.set_page_config(
+    page_title="Parent Dashboard 📊",
+    page_icon="📊",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
@@ -19,6 +24,24 @@ html, body, [class*="css"], button, input, select {
 
 h1 { font-size: 2.6rem !important; color: #0284c7 !important; }
 h2 { font-size: 2.1rem !important; color: #0369a1 !important; }
+
+[data-testid="stSidebar"] {
+    background-color: #e0f2fe !important;
+    border-right: 4px solid #bae6fd !important;
+}
+
+[data-testid="stSidebarCollapseButton"] button {
+    background-color: #fde047 !important;
+    border: 2px solid #eab308 !important;
+    border-radius: 12px !important;
+}
+
+[data-testid="stSidebar"] .stSelectbox {
+    background: #ffffff;
+    padding: 10px;
+    border-radius: 16px;
+    border: 2px solid #bae6fd;
+}
 </style>
 """, unsafe_allow_html=True)
 
