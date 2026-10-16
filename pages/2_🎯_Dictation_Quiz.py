@@ -110,19 +110,16 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        # Header strategy 1: Bearer Token Auth
         headers_bearer = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {clean_token}"
         }
 
-        # Header strategy 2: Header Key Auth
         headers_goog = {
             "Content-Type": "application/json",
             "x-goog-api-key": clean_token
         }
 
-        # Try Bearer
         resp = requests.post(url, json=payload, headers=headers_bearer, timeout=12)
 
         if resp.status_code == 200:
@@ -134,7 +131,6 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
                 return parsed.get("is_correct", False), parsed.get("feedback", "Evaluated successfully!")
             return True, "Handwriting evaluated!"
 
-        # Fallback to x-goog-api-key header
         resp_fb = requests.post(url, json=payload, headers=headers_goog, timeout=12)
         if resp_fb.status_code == 200:
             res_json = resp_fb.json()
@@ -170,6 +166,22 @@ def reset_quiz_state(child_name: str):
     st.session_state[f"unfamiliar_words_{child_name}"] = set()
 
 
+def rename_child_profile(old_name: str, new_name: str):
+    if not new_name or new_name == old_name:
+        return
+    if old_name in st.session_state.children:
+        idx = st.session_state.children.index(old_name)
+        st.session_state.children[idx] = new_name
+    
+    st.session_state.active_child = new_name
+
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "mastered_words", "unfamiliar_words"]:
+        old_key = f"{key_prefix}_{old_name}"
+        new_key = f"{key_prefix}_{new_name}"
+        if old_key in st.session_state:
+            st.session_state[new_key] = st.session_state.pop(old_key)
+
+
 # Sidebar Child Switcher
 if "children" not in st.session_state:
     st.session_state.children = ["Alex", "Emma"]
@@ -186,6 +198,18 @@ with st.sidebar:
     if selected_child != st.session_state.active_child:
         st.session_state.active_child = selected_child
         st.rerun()
+
+    active_child = st.session_state.active_child
+
+    # Edit Name
+    with st.expander("✏️ Edit Learner Name", expanded=False):
+        edited_name = st.text_input("New Name:", value=active_child, key=f"p2_rename_input_{active_child}")
+        if st.button("Save New Name", type="primary", use_container_width=True):
+            clean_rename = edited_name.strip()
+            if clean_rename and clean_rename != active_child:
+                rename_child_profile(active_child, clean_rename)
+                st.success(f"Renamed to {clean_rename}!")
+                st.rerun()
 
 active_child = st.session_state.active_child
 
