@@ -6,6 +6,7 @@ import io
 import json
 import re
 import requests
+import numpy as np
 import streamlit as st
 from gtts import gTTS
 from PIL import Image
@@ -50,11 +51,10 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends the handwritten canvas drawing to Gemini AI for vision auto-grading."""
+    """Sends handwritten canvas drawing to Gemini AI for vision auto-grading."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
-        # Convert canvas numpy array to JPEG bytes
         img = Image.fromarray(image_data.astype('uint8'), 'RGBA').convert('RGB')
         buffered = io.BytesIO()
         img.save(buffered, format="JPEG")
@@ -62,9 +62,9 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
 
         prompt = (
             f"You are evaluating a child's handwritten Chinese character. "
-            f"The intended character is '{target_char}'. "
-            f"Analyze the drawing image and respond strictly in JSON format with two keys: "
-            f"'is_correct' (boolean: true or false) and 'feedback' (string: brief encouraging feedback in English/Chinese)."
+            f"The intended target character is '{target_char}'. "
+            f"Analyze the image strokes and respond strictly in valid JSON format with two keys: "
+            f"'is_correct' (boolean: true or false) and 'feedback' (string: short encouraging feedback in English)."
         )
 
         payload = {
@@ -165,7 +165,7 @@ st.write("---")
 
 # Dedicated Drawing Canvas
 st.subheader("✏️ Handwriting Practice Pad")
-st.caption("Write your answer using your finger or stylus in the box below:")
+st.caption("Write your answer using your finger, stylus, or mouse in the box below:")
 
 canvas_result = st_canvas(
     fill_color="rgba(255, 255, 255, 0)",
@@ -178,7 +178,7 @@ canvas_result = st_canvas(
     key=f"canvas_{current_idx}"
 )
 
-# Text box rendered ONLY for English spelling lists
+# Render text input ONLY for English spelling words
 if not is_chinese:
     user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{current_idx}")
 
@@ -187,10 +187,23 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Handwriting", type="primary"):
         if is_chinese:
-            if GEMINI_API_KEY and canvas_result.image_data is not None:
+            # Safely extract image matrix without throwing RuntimeError
+            has_strokes = False
+            img_data = None
+            try:
+                if canvas_result is not None and getattr(canvas_result, "image_data", None) is not None:
+                    img_data = canvas_result.image_data
+                    if np.any(img_data[:, :, :3] < 255):  # Check if drawn pixels exist
+                        has_strokes = True
+            except Exception:
+                has_strokes = False
+
+            if not has_strokes:
+                st.warning("✏️ Please write the character on the practice pad before grading!")
+            elif GEMINI_API_KEY and img_data is not None:
                 with st.spinner("Analyzing Chinese handwriting..."):
                     is_correct, feedback = grade_handwriting_with_gemini(
-                        canvas_result.image_data, target_word, GEMINI_API_KEY
+                        img_data, target_word, GEMINI_API_KEY
                     )
                     if is_correct:
                         st.success(f"🌟 Correct! Awesome handwriting: **{target_word}**")
@@ -198,12 +211,14 @@ with col1:
                         st.session_state.quiz_score += 1
                         st.session_state.mastered_words.add(target_word)
                     else:
-                        st.error(f"❌ Target Character: **{target_word}**")
+                        st.error(f"❌ Correct Character: **{target_word}**")
                         st.write(f"💬 {feedback}")
                         st.session_state.unfamiliar_words.add(target_word)
+                    st.session_state.quiz_checked = True
             else:
-                st.write(f"📖 Correct Character: **{target_word}**")
-                st.info("Ensure Gemini API Key is entered in sidebar for automatic vision grading!")
+                st.write(f"📖 Target Character: **{target_word}**")
+                st.info("Please verify GEMINI_API_KEY is configured in Secrets for automatic vision grading!")
+                st.session_state.quiz_checked = True
         else:
             clean_user = user_answer.strip().casefold() if 'user_answer' in locals() else ""
             clean_target = target_word.strip().casefold()
@@ -215,7 +230,7 @@ with col1:
                 st.error(f"❌ Correct Spelling: **{target_word}**")
                 st.session_state.unfamiliar_words.add(target_word)
 
-        st.session_state.quiz_checked = True
+            st.session_state.quiz_checked = True
 
 with col2:
     if st.session_state.quiz_checked:
