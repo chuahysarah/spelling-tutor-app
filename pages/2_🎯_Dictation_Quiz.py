@@ -97,7 +97,7 @@ if idx >= len(active_quiz_words):
         st.session_state.quiz_checked = False
         st.rerun()
 
-    if st.session_state.unfamiliar_words and col_review.button(f"🔴 Practice Unfamiliar Only ({len(st.session_state.unfamiliar_words)})", type="secondary"):
+    if st.session_state.unfamiliar_words and col_review.button(f"🔴 Practise Unfamiliar Only ({len(st.session_state.unfamiliar_words)})", type="secondary"):
         st.session_state.quiz_words = list(st.session_state.unfamiliar_words)
         st.session_state.quiz_index = 0
         st.session_state.quiz_score = 0
