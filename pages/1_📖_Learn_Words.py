@@ -22,6 +22,10 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
+def get_api_key() -> str | None:
+    return st.session_state.get("api_key") or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_available_models(api_key: str) -> list[str]:
     try:
@@ -95,6 +99,12 @@ def render_hanzi_animations(word: str) -> None:
     components.html(html_code, height=num_rows * 110 + 15)
 
 
+with st.sidebar:
+    st.subheader("👨‍👩‍👧 For Grown-Ups")
+    api_key_input = st.text_input("Google Gemini API Key", type="password", value=st.session_state.get("api_key", ""))
+    if api_key_input:
+        st.session_state.api_key = api_key_input.strip()
+
 st.title("📖 Step 2: Let's Learn Our Words!")
 
 raw_words = st.session_state.get("raw_words", "")
@@ -103,22 +113,27 @@ if not raw_words:
     st.stop()
 
 words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
-key = st.session_state.get("api_key")
+key = get_api_key()
 analysis = {}
 
 if key:
-    with st.spinner("✨ Fetching study notes..."):
-        analysis, _ = get_analysis(words, key)
+    with st.spinner("✨ Fetching study notes & definitions from Gemini..."):
+        analysis, err = get_analysis(words, key)
+        if err:
+            st.warning(f"Could not load AI details: {err}")
+else:
+    st.info("💡 Add a Gemini API Key in the sidebar to generate meanings, example sentences, and phonics tips!")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
     lang = str(info.get("language") or guess_language(word))
-    with st.expander(f"Word {index + 1}:  {word} ({lang})"):
+    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
         audio_button(word, lang, f"audio-{word}")
         if lang == "English":
             st.write(f"🧩 **Syllables:** {info.get('syllables', '—')}")
             st.write(f"💡 **Meaning:** {info.get('meaning', '—')}")
             st.write(f"💬 **Example:** {info.get('sentence', '—')}")
+            st.write(f"⭐ **Tip:** {info.get('spelling_tip', '—')}")
         else:
             py = str(info.get("pinyin") or local_pinyin(word))
             st.write(f"🗣️ **Pinyin:** `{py}`")
@@ -129,3 +144,4 @@ for index, word in enumerate(words):
             st.write(f"💬 **Example:** {sentence}")
             if sentence and sentence != "—":
                 audio_button(sentence, "Chinese", f"sentence-{word}")
+            st.write(f"⭐ **Tip:** {info.get('spelling_tip', '—')}")
