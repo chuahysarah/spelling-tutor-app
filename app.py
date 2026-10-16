@@ -13,6 +13,52 @@ DEFAULT_LISTS = {
     "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
 }
 
+# Global Kid-Friendly CSS Inject
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+
+html, body, [class*="css"], button, input, select {
+    font-family: 'Fredoka', cursive, sans-serif !important;
+    font-size: 1.15rem;
+}
+
+h1 { font-size: 2.8rem !important; color: #0284c7 !important; }
+h2 { font-size: 2.2rem !important; color: #0369a1 !important; }
+h3 { font-size: 1.7rem !important; color: #0f766e !important; }
+
+.stButton > button {
+    font-size: 1.3rem !important;
+    font-weight: 700 !important;
+    border-radius: 18px !important;
+    padding: 0.6rem 1.2rem !important;
+}
+
+.hero {
+    padding: 2.2rem 1.8rem; 
+    border-radius: 28px; 
+    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
+    border: 4px solid #fde047;
+    text-align: center;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+}
+.hero h1 { color: #0284c7; margin-bottom: 0.6rem; font-size: 2.8rem; }
+.hero p { color: #334155; font-size: 1.35rem; margin: 0; }
+
+.action-card {
+    padding: 1.6rem;
+    border-radius: 24px;
+    border: 3px solid #bae6fd;
+    text-align: center;
+    background: #ffffff;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.05);
+}
+.action-card h3 { font-size: 1.8rem; color: #0284c7; margin-bottom: 0.4rem; }
+.action-card p { font-size: 1.15rem; color: #475569; }
+</style>
+""", unsafe_allow_html=True)
+
 
 def fetch_remote_lists() -> dict[str, str]:
     if API_URL:
@@ -43,14 +89,12 @@ def delete_remote_list(title: str) -> None:
             st.error(f"Failed to sync delete to database: {e}")
 
 
-# Initialize Global Lists
 fetched = fetch_remote_lists()
 if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
     st.session_state.archived_lists = fetched
 else:
     st.session_state.archived_lists.update(fetched)
 
-# Initialize Multi-Child Profiles
 if "children" not in st.session_state:
     st.session_state.children = ["Alex", "Emma"]
 
@@ -70,14 +114,13 @@ def rename_child_profile(old_name: str, new_name: str):
     
     st.session_state.active_child = new_name
 
-    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "mastered_words", "unfamiliar_words"]:
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
         old_key = f"{key_prefix}_{old_name}"
         new_key = f"{key_prefix}_{new_name}"
         if old_key in st.session_state:
             st.session_state[new_key] = st.session_state.pop(old_key)
 
 
-# Sidebar Profile Controls
 with st.sidebar:
     st.subheader("👤 Who is practicing today?")
     
@@ -113,30 +156,7 @@ with st.sidebar:
 
 active_child = st.session_state.active_child
 
-# App Hero Banner
 st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
-html, body, [class*="css"] {{ font-family: 'Fredoka', cursive, sans-serif; }}
-.hero {{
-    padding: 2rem 1.5rem; 
-    border-radius: 24px; 
-    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
-    border: 3px solid #fde047;
-    text-align: center;
-    margin-bottom: 1.5rem;
-}}
-.hero h1 {{ color: #0284c7; margin-bottom: 0.5rem; font-size: 2.2rem; }}
-.hero p {{ color: #334155; font-size: 1.1rem; margin: 0; }}
-.action-card {{
-    padding: 1.2rem;
-    border-radius: 16px;
-    border: 2px solid #e2e8f0;
-    text-align: center;
-    background: #ffffff;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-}}
-</style>
 <div class="hero">
     <h1>👋 Hi {active_child}! Welcome to Magic Spelling World! ✏️</h1>
     <p>Listen, practice handwriting, and master Chinese & English spelling today!</p>
@@ -162,7 +182,7 @@ with col2:
     st.markdown("""
     <div class="action-card">
         <h3>🎯 Dictation Quiz</h3>
-        <p>Listen to audio & test your handwriting with AI auto-grading!</p>
+        <p>Listen to audio & test your handwriting!</p>
     </div>
     """, unsafe_allow_html=True)
     st.write("")
