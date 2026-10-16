@@ -30,7 +30,7 @@ def get_api_key() -> str | None:
 def get_available_models(api_key: str) -> list[str]:
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        resp = requests.get(url, timeout=3)
+        resp = requests.get(url, timeout=4)
         if resp.status_code == 200:
             models_data = resp.json().get("models", [])
             valid = [m.get("name", "").replace("models/", "") for m in models_data if "generateContent" in m.get("supportedGenerationMethods", []) and "flash" in m.get("name", "").lower()]
@@ -45,8 +45,7 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
     if not api_key:
         return {}, "No API key configured."
     
-    # Prompt updated for child-friendly, bilingual memory tricks & tips!
-    prompt = """You are an encouraging primary school spelling tutor for a 7-9 year old child. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. 
+    prompt = """You are an encouraging primary school spelling tutor for a 7-9 year old child. Analyze every item below. Return ONLY a JSON object keyed by the exact input item.
 
 For each item, provide:
 1. language: 'English' or 'Chinese'
@@ -57,10 +56,6 @@ For each item, provide:
    - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth) because...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
    - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
 6. pinyin: Chinese tone-marked pinyin or empty for English.
-7. stroke_count: integer or null.
-8. radical: Chinese radical or empty.
-9. structure: character structure (e.g. 左右结构/上下结构) or empty.
-10. strokes: concise ordered list of stroke names as strings.
 
 Items: """ + json.dumps(words, ensure_ascii=False)
     
@@ -71,7 +66,7 @@ Items: """ + json.dumps(words, ensure_ascii=False)
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
-            resp = requests.post(url, json=payload, timeout=8)
+            resp = requests.post(url, json=payload, timeout=10)
             if resp.status_code == 200:
                 data = json.loads(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
                 return (data if isinstance(data, dict) else {}), None
@@ -124,6 +119,19 @@ with st.sidebar:
 
 st.title("📖 Step 2: Let's Learn Our Words!")
 
+# Week Switcher Bar at the top of Learn Words page
+if "archived_lists" in st.session_state and st.session_state.archived_lists:
+    selected_week = st.selectbox(
+        "📚 Active Practice List:",
+        options=list(st.session_state.archived_lists.keys()),
+        index=list(st.session_state.archived_lists.keys()).index(st.session_state.get("active_week", list(st.session_state.archived_lists.keys())[0]))
+    )
+    if selected_week != st.session_state.get("active_week"):
+        st.session_state.active_week = selected_week
+        st.session_state.raw_words = st.session_state.archived_lists[selected_week]
+        st.session_state.cached_analysis = {}
+        st.rerun()
+
 raw_words = st.session_state.get("raw_words", "")
 if not raw_words:
     st.info("👆 Please go to the Home page to add your spelling list first!")
@@ -137,17 +145,17 @@ if "cached_analysis" not in st.session_state:
 key = get_api_key()
 
 if key and not st.session_state.cached_analysis:
-    with st.spinner("✨ Creating fun memory tricks & study notes..."):
+    with st.spinner("✨ Fetching child-friendly meanings and memory tricks..."):
         data, err = get_analysis(words, key)
-        if not err:
+        if not err and data:
             st.session_state.cached_analysis = data
-        else:
-            st.warning(f"Note: Could not fetch extra AI details ({err}).")
+        elif err:
+            st.warning(f"Note: Unable to load AI details ({err}).")
 
 analysis = st.session_state.cached_analysis
 
 if not key:
-    st.info("💡 Add a Gemini API Key in the sidebar to generate child-friendly definitions, example sentences, and bilingual memory tricks!")
+    st.warning("⚠️ No Gemini API Key found. Add your Gemini API Key in the sidebar to generate meanings, examples, and memory tricks!")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
@@ -158,7 +166,7 @@ for index, word in enumerate(words):
             st.write(f"🧩 **Syllables:** {info.get('syllables', '—')}")
             st.write(f"💡 **Meaning:** {info.get('meaning', '—')}")
             st.write(f"💬 **Example:** {info.get('sentence', '—')}")
-            st.write(f"💡 **Fun Memory Tip:** {info.get('spelling_tip', '—')}")
+            st.write(f"⭐ **Fun Memory Tip:** {info.get('spelling_tip', '—')}")
         else:
             py = str(info.get("pinyin") or local_pinyin(word))
             st.write(f"🗣️ **Pinyin:** `{py}`")
