@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+from typing import Any
+
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
+from gtts import gTTS
+from pypinyin import Style, pinyin
 
-st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
+st.set_page_config(page_title="Learn Words 📖", page_icon="📖", layout="centered")
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
@@ -14,51 +21,114 @@ DEFAULT_LISTS = {
 }
 
 
-def fetch_remote_lists() -> dict[str, str]:
+def fetch_available_lists() -> dict[str, str]:
+    if "archived_lists" in st.session_state and st.session_state.archived_lists:
+        return st.session_state.archived_lists
+
     if API_URL:
         try:
             resp = requests.get(API_URL, params={"action": "get_lists"}, allow_redirects=True, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict) and data:
+                    st.session_state.archived_lists = data
                     return data
         except Exception:
             pass
     return DEFAULT_LISTS
 
 
-def save_remote_list(title: str, words: str) -> None:
-    if API_URL:
-        try:
-            requests.post(API_URL, json={"action": "save", "title": title, "words": words}, timeout=5)
-        except Exception as e:
-            st.error(f"Failed to sync save to database: {e}")
+def guess_language(text: str) -> str:
+    return "Chinese" if re.search(r"[\u3400-\u9fff]", text) else "English"
 
 
-def delete_remote_list(title: str) -> None:
-    if API_URL:
-        try:
-            requests.post(API_URL, json={"action": "delete", "title": title}, timeout=5)
-        except Exception as e:
-            st.error(f"Failed to sync delete to database: {e}")
+def local_pinyin(text: str) -> str:
+    return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
-# Initialize Global Lists
-fetched = fetch_remote_lists()
-if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
-    st.session_state.archived_lists = fetched
-else:
-    st.session_state.archived_lists.update(fetched)
+def get_api_key() -> str:
+    key = ""
+    if "GEMINI_API_KEY" in st.secrets:
+        key = str(st.secrets["GEMINI_API_KEY"])
+    elif "gemini_api_key" in st.secrets:
+        key = str(st.secrets["gemini_api_key"])
+    elif st.session_state.get("api_key"):
+        key = str(st.session_state.get("api_key"))
+    
+    return key.strip().strip("'").strip('"')
 
-# Initialize Multi-Child Profiles
-if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
 
-if "active_child" not in st.session_state:
-    st.session_state.active_child = st.session_state.children[0]
+def get_analysis(words: list[str], api_key: str) -> tuple[dict[str, dict[str, Any]], str | None]:
+    if not api_key:
+        return {}, "No API key configured."
+    
+    prompt = """You are an encouraging primary school spelling tutor for a 7-9 year old child. Analyze every item below. Return ONLY a JSON object keyed by the exact input item.
 
-if "parent_unlocked" not in st.session_state:
-    st.session_state.parent_unlocked = False
+For each item, provide:
+1. language: 'English' or 'Chinese'
+2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
+3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
+4. sentence: short, relatable daily life context sentence.
+5. spelling_tip: a super fun, child-friendly memory trick or phonics hint! 
+   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth)...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
+   - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
+6. pinyin: Chinese tone-marked pinyin or empty for English.
+
+Items: """ + json.dumps(words, ensure_ascii=False)
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}], 
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
+    }
+    
+    clean_token = api_key.strip().strip("'").strip('"')
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={clean_token}"
+
+    try:
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+        if resp.status_code == 200:
+            raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+                return (data if isinstance(data, dict) else {}), None
+    except Exception as exc:
+        return {}, str(exc)
+
+    return {}, "Failed to load AI details."
+
+
+@st.cache_data(show_spinner=False, max_entries=512, ttl=7200)
+def make_audio(text: str, lang: str) -> bytes:
+    from io import BytesIO
+    audio = BytesIO()
+    gTTS(text=text, lang=lang, slow=False).write_to_fp(audio)
+    return audio.getvalue()
+
+
+def audio_button(text: str, language: str, key: str) -> None:
+    lang = "zh-CN" if language == "Chinese" else "en"
+    try:
+        st.audio(make_audio(text, lang), format="audio/mp3")
+    except Exception:
+        st.caption("🔊 Audio temporarily unavailable")
+
+
+def render_hanzi_animations(word: str) -> None:
+    chinese_chars = [char for char in word if re.search(r"[\u3400-\u9fff]", char)]
+    if not chinese_chars:
+        return
+
+    targets = ""
+    scripts = ""
+    for i, char in enumerate(chinese_chars):
+        div_id = f"target-{i}-{ord(char)}"
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff;"></div>'
+        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 90, height: 90, padding: 4, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
+
+    num_rows = (len(chinese_chars) + 4) // 5
+    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:6px;">{targets}</div><script>{scripts}</script></body></html>"""
+    components.html(html_code, height=num_rows * 110 + 15)
 
 
 def rename_child_profile(old_name: str, new_name: str):
@@ -77,12 +147,15 @@ def rename_child_profile(old_name: str, new_name: str):
             st.session_state[new_key] = st.session_state.pop(old_key)
 
 
-# Sidebar Profile Controls
+if "children" not in st.session_state:
+    st.session_state.children = ["Alex", "Emma"]
+if "active_child" not in st.session_state:
+    st.session_state.active_child = st.session_state.children[0]
+
 with st.sidebar:
-    st.subheader("👤 Who is practicing today?")
-    
+    st.subheader("👤 Practicing Learner")
     selected_child = st.selectbox(
-        "Select Learner:",
+        "Current Child:",
         options=st.session_state.children,
         index=st.session_state.children.index(st.session_state.active_child)
     )
@@ -92,8 +165,8 @@ with st.sidebar:
 
     active_child = st.session_state.active_child
 
-    with st.expander("✏️ Edit Current Learner Name", expanded=False):
-        edited_name = st.text_input("New Name:", value=active_child, key=f"rename_input_{active_child}")
+    with st.expander("✏️ Edit Learner Name", expanded=False):
+        edited_name = st.text_input("New Name:", value=active_child, key=f"p1_rename_input_{active_child}")
         if st.button("Save New Name", type="primary", use_container_width=True):
             clean_rename = edited_name.strip()
             if clean_rename and clean_rename != active_child:
@@ -101,125 +174,78 @@ with st.sidebar:
                 st.success(f"Renamed to {clean_rename}!")
                 st.rerun()
 
-    with st.expander("➕ Add New Learner", expanded=False):
-        new_child_name = st.text_input("Child's Name:", placeholder="e.g., Lucas", key="add_new_child_input")
-        if st.button("Add Learner Profile", type="secondary", use_container_width=True):
-            clean_name = new_child_name.strip()
-            if clean_name and clean_name not in st.session_state.children:
-                st.session_state.children.append(clean_name)
-                st.session_state.active_child = clean_name
-                st.success(f"Added profile for {clean_name}!")
-                st.rerun()
-
 active_child = st.session_state.active_child
 
-# App Hero Banner
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
-html, body, [class*="css"] {{ font-family: 'Fredoka', cursive, sans-serif; }}
-.hero {{
-    padding: 2rem 1.5rem; 
-    border-radius: 24px; 
-    background: linear-gradient(135deg, #fef9c3 0%, #e0f2fe 100%); 
-    border: 3px solid #fde047;
-    text-align: center;
-    margin-bottom: 1.5rem;
-}}
-.hero h1 {{ color: #0284c7; margin-bottom: 0.5rem; font-size: 2.2rem; }}
-.hero p {{ color: #334155; font-size: 1.1rem; margin: 0; }}
-.action-card {{
-    padding: 1.2rem;
-    border-radius: 16px;
-    border: 2px solid #e2e8f0;
-    text-align: center;
-    background: #ffffff;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-}}
-</style>
-<div class="hero">
-    <h1>👋 Hi {active_child}! Welcome to Magic Spelling World! ✏️</h1>
-    <p>Listen, practice handwriting, and master Chinese & English spelling today!</p>
-</div>
-""", unsafe_allow_html=True)
+st.title(f"📖 Hi {active_child}! Let's Learn Our Words!")
 
-st.write(f"### 🚀 What would **{active_child}** like to do?")
+available_lists = fetch_available_lists()
+list_titles = list(available_lists.keys())
 
-col1, col2 = st.columns(2)
+current_active = st.session_state.get(f"active_week_{active_child}", "")
+if current_active not in list_titles and list_titles:
+    st.session_state[f"active_week_{active_child}"] = list_titles[0]
+    st.session_state[f"raw_words_{active_child}"] = available_lists[list_titles[0]]
 
-with col1:
-    st.markdown("""
-    <div class="action-card">
-        <h3>📖 Learn Words</h3>
-        <p>Explore meanings, pinyin, stroke orders & memory tricks!</p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.write("")
-    if st.button(f"👉 Learn Words for {active_child}", type="primary", use_container_width=True):
-        st.switch_page("pages/1_📖_Learn_Words.py")
+default_idx = list_titles.index(st.session_state[f"active_week_{active_child}"]) if st.session_state[f"active_week_{active_child}"] in list_titles else 0
 
-with col2:
-    st.markdown("""
-    <div class="action-card">
-        <h3>🎯 Dictation Quiz</h3>
-        <p>Listen to audio & test your handwriting with AI auto-grading!</p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.write("")
-    if st.button(f"👉 Start Dictation Quiz", type="primary", use_container_width=True):
-        st.switch_page("pages/2_🎯_Dictation_Quiz.py")
+selected_week = st.selectbox(
+    f"📚 Select Weekly List for {active_child}:",
+    options=list_titles,
+    index=default_idx
+)
 
-st.divider()
+if selected_week != st.session_state.get(f"active_week_{active_child}"):
+    st.session_state[f"active_week_{active_child}"] = selected_week
+    st.session_state[f"raw_words_{active_child}"] = available_lists[selected_week]
+    st.session_state[f"cached_analysis_{active_child}"] = {}
+    st.rerun()
 
-PARENT_PIN = "6666"
+raw_words = st.session_state.get(f"raw_words_{active_child}", "")
+words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
 
-with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
-    st.caption("Grown-ups only! Enter PIN to add, update, or delete spelling lists.")
+if not words:
+    st.warning("⚠️ No words found in the selected list. Please choose a different list above!")
+    st.stop()
 
-    if not st.session_state.parent_unlocked:
-        entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="pin_entry_field")
-        if entered_pin == PARENT_PIN:
-            st.session_state.parent_unlocked = True
-            st.rerun()
-        elif entered_pin != "":
-            st.error("❌ Incorrect PIN. Please try again.")
-    else:
-        st.success("🔓 Unlocked!")
-        if st.button("🔒 Lock Parent Area Now", type="secondary"):
-            st.session_state.parent_unlocked = False
-            st.rerun()
+if f"cached_analysis_{active_child}" not in st.session_state:
+    st.session_state[f"cached_analysis_{active_child}"] = {}
 
-        st.write("---")
-        
-        st.write("### ➕ Add or Update List")
-        new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 5: Animals & Weather")
-        new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n事情\n生日")
-        
-        if st.button("💾 Save List to Google Sheets", type="primary"):
-            title_clean = new_week_title.strip()
-            words_clean = new_week_words.strip()
-            if title_clean and words_clean:
-                st.session_state.archived_lists[title_clean] = words_clean
-                save_remote_list(title_clean, words_clean)
-                st.session_state.parent_unlocked = False
-                st.success(f"Saved '{title_clean}' successfully!")
-                st.rerun()
-            else:
-                st.warning("Please enter both a title and words before saving.")
+key = get_api_key()
 
-        st.divider()
+if key and not st.session_state.get(f"cached_analysis_{active_child}") and words:
+    with st.spinner(f"✨ Loading word details for {active_child}..."):
+        data, err = get_analysis(words, key)
+        if not err and data:
+            st.session_state[f"cached_analysis_{active_child}"] = data
 
-        st.write("### 🗑️ Delete an Existing List")
-        if st.session_state.archived_lists:
-            list_to_delete = st.selectbox(
-                "Select list to delete:",
-                options=list(st.session_state.archived_lists.keys()),
-                key="delete_list_select"
-            )
-            if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
-                del st.session_state.archived_lists[list_to_delete]
-                delete_remote_list(list_to_delete)
-                st.session_state.parent_unlocked = False
-                st.rerun()
+analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
+
+for index, word in enumerate(words):
+    info = analysis.get(word, {})
+    lang = str(info.get("language") or guess_language(word))
+    with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
+        audio_button(word, lang, f"audio-{word}")
+        if lang == "English":
+            syllables = info.get('syllables') or "-".join([word[i:i+3] for i in range(0, len(word), 3)])
+            meaning = info.get('meaning') or f"The English word '{word}'."
+            sentence = info.get('sentence') or f"Please write the word '{word}' in your notebook."
+            tip = info.get('spelling_tip') or f"Break '{word}' down into smaller letter chunks to remember!"
+            
+            st.write(f"🧩 **Syllables:** {syllables}")
+            st.write(f"💡 **Meaning:** {meaning}")
+            st.write(f"💬 **Example:** {sentence}")
+            st.write(f"⭐ **Fun Memory Tip:** {tip}")
         else:
-            st.caption("No archived lists to delete.")
+            py = str(info.get("pinyin") or local_pinyin(word))
+            meaning = info.get('meaning') or f"Chinese word / 词语: {word}"
+            sentence = info.get("sentence") or f"今天我们要学习 '{word}' 这个词。"
+            tip = info.get('spelling_tip') or f"Observe the stroke order and practice writing '{word}' step-by-step!"
+
+            st.write(f"🗣️ **Pinyin:** `{py}`")
+            st.write("✍️ **Stroke Order Animation:**")
+            render_hanzi_animations(word)
+            st.write(f"💡 **Meaning:** {meaning}")
+            st.write(f"💬 **Example:** {sentence}")
+            if sentence:
+                audio_button(sentence, "Chinese", f"sentence-{word}")
+            st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
