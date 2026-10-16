@@ -40,6 +40,7 @@ if not st.session_state.parent_dashboard_unlocked:
     st.stop()
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_practice_history() -> list[dict]:
     if API_URL:
         try:
@@ -53,8 +54,22 @@ def fetch_practice_history() -> list[dict]:
     return []
 
 
+@st.cache_data(ttl=15, show_spinner=False)
+def fetch_child_profiles() -> list[str]:
+    if API_URL:
+        try:
+            resp = requests.get(API_URL, params={"action": "get_profiles"}, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+    return ["Alex", "Emma"]
+
+
 if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
+    st.session_state.children = fetch_child_profiles()
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
 
@@ -62,7 +77,7 @@ st.subheader("👤 Select Child Profile")
 view_child = st.selectbox(
     "Showing active session details for:",
     options=st.session_state.children,
-    index=st.session_state.children.index(st.session_state.active_child)
+    index=st.session_state.children.index(st.session_state.active_child) if st.session_state.active_child in st.session_state.children else 0
 )
 
 st.divider()
