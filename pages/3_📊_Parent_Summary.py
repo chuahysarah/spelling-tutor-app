@@ -56,7 +56,7 @@ with col_a:
         st.caption("No words marked as mastered yet.")
 
 with col_b:
-    st.markdown("### 🔴 Words Needing Practice")
+    st.markdown("### 🔴 More Practices")
     if unfamiliar:
         for word in sorted(unfamiliar):
             st.error(f"❌ {word}")
