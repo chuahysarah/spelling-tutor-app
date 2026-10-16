@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import requests
 import streamlit as st
+from html import escape
 
 st.set_page_config(
     page_title="Magic Spelling World ✏️",
@@ -15,7 +16,7 @@ API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;500;600;700;800&display=swap');
 :root {
     --ink:#111827; --body:#1f2937; --blue:#173f91; --blue-dark:#12336f;
     --purple:#4b1d82; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0;
@@ -23,7 +24,7 @@ st.markdown("""
     --control-border:#64748b;
 }
 html, body, [class*="css"], button, input, select, textarea {
-    font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
+    font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
     color:var(--ink);
 }
 html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
@@ -49,15 +50,18 @@ p, li, [data-testid="stMarkdownContainer"] p {
 [data-testid="stCaptionContainer"] { font-size:1rem !important; font-weight:500; }
 h1, [data-testid="stMarkdownContainer"] h1 {
     color:var(--blue) !important; font-size:2rem !important;
-    line-height:1.2; font-weight:700 !important; letter-spacing:-.02em;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    line-height:1.2; font-weight:800 !important; letter-spacing:-.02em;
 }
 h2, [data-testid="stMarkdownContainer"] h2 {
     color:var(--purple) !important; font-size:1.625rem !important;
-    line-height:1.25; font-weight:700 !important;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    line-height:1.25; font-weight:800 !important;
 }
 h3, [data-testid="stMarkdownContainer"] h3 {
     color:#07594f !important; font-size:1.375rem !important;
-    line-height:1.3; font-weight:700 !important;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    line-height:1.3; font-weight:800 !important;
 }
 [data-testid="stWidgetLabel"] p,
 [data-testid="stWidgetLabel"] label {
@@ -71,7 +75,7 @@ h3, [data-testid="stMarkdownContainer"] h3 {
     min-height:2.75rem; border:2px solid var(--blue) !important;
     border-radius:16px !important; padding:.65rem 1.15rem !important;
     background:var(--blue) !important; color:#fff !important;
-    font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
+    font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
     font-size:1.125rem !important; font-weight:700 !important;
     box-shadow:0 4px 0 var(--blue-dark),0 8px 16px rgba(49,88,184,.15) !important;
     transition:transform .15s ease,box-shadow .15s ease,background-color .15s ease;
@@ -123,7 +127,7 @@ button[data-testid="stSidebarCollapsedControl"]::after,
 button[data-testid="collapsedControl"]::after {
     content:"Open menu";
     color:#ffffff !important;
-    font-family:'Fredoka','Trebuchet MS',Arial,sans-serif !important;
+    font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
     font-size:1rem !important;
     font-weight:700 !important;
     white-space:nowrap;
@@ -176,9 +180,23 @@ hr { border-color:#e6ddf7 !important; }
 }
 .hero h1 {
     color:var(--blue) !important; margin-bottom:.55rem;
-    font-size:2.5rem !important;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    font-size:2.5rem !important; font-weight:800 !important;
 }
-.hero p { color:var(--ink) !important; font-size:1.2rem; font-weight:600; margin:0; }
+.hero p { color:var(--ink) !important; font-size:1.2rem; font-weight:700; margin:0; }
+.child-name {
+    display:inline-block; white-space:nowrap;
+    margin:0 .08em; padding:0 .32em; border-radius:.38em;
+    background:#ffc94a; color:#111827 !important;
+    font-weight:800; box-shadow:0 3px 0 #6b4e00;
+    transform-origin:center;
+    animation:child-name-pop .5s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes child-name-pop {
+    0% { opacity:.55; transform:translateY(.25em) scale(.88); }
+    70% { opacity:1; transform:translateY(-.06em) scale(1.06); }
+    100% { opacity:1; transform:translateY(0) scale(1); }
+}
 .action-card {
     padding:1.45rem 1.2rem; min-height:155px; border-radius:24px;
     border:2px solid #fff; text-align:center;
@@ -201,25 +219,41 @@ hr { border-color:#e6ddf7 !important; }
     border:2px solid #64748b !important;
     border-radius:24px !important;
     box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff !important;
+    transition:transform .18s ease,box-shadow .18s ease,background .18s ease;
 }
 .st-key-home_learn_card button:hover,
 .st-key-home_quiz_card button:hover,
 .st-key-home_garden_card button:hover {
     background:linear-gradient(145deg,#ffffff 0%,#e6f4ff 100%) !important;
     border-color:var(--blue) !important;
-    transform:translateY(-2px);
+    transform:translateY(-4px) scale(1.015);
+    box-shadow:0 14px 28px rgba(53,86,144,.18),inset 0 0 0 2px #cde5ff !important;
+}
+.st-key-home_learn_card button:active,
+.st-key-home_quiz_card button:active,
+.st-key-home_garden_card button:active {
+    transform:scale(.985);
 }
 .st-key-home_learn_card button p,
 .st-key-home_quiz_card button p,
 .st-key-home_garden_card button p {
-    color:var(--body) !important; font-size:1rem !important;
+    color:var(--body) !important; font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
+    font-size:1rem !important;
     line-height:1.4; font-weight:500;
 }
 .st-key-home_learn_card button strong,
 .st-key-home_quiz_card button strong,
 .st-key-home_garden_card button strong {
     display:block; color:var(--blue) !important;
-    font-size:1.4rem; font-weight:700;
+    font-family:'Baloo 2','Trebuchet MS',sans-serif !important;
+    font-size:1.55rem; font-weight:800;
+}
+.st-key-home_learn_card { animation:card-rise .42s ease-out both; }
+.st-key-home_quiz_card { animation:card-rise .42s ease-out .08s both; }
+.st-key-home_garden_card { animation:card-rise .42s ease-out .16s both; }
+@keyframes card-rise {
+    from { opacity:.65; transform:translateY(8px); }
+    to { opacity:1; transform:translateY(0); }
 }
 
 /* Visible keyboard focus and reduced-motion support. */
@@ -243,6 +277,7 @@ hr { border-color:#e6ddf7 !important; }
 
     .hero { padding:1.25rem 1rem; margin-bottom:1rem; border-radius:20px; }
     .hero h1 { font-size:clamp(1.6rem,7vw,2rem) !important; line-height:1.15; }
+    .child-name { padding:0 .24em; }
     .hero p { font-size:1rem; line-height:1.45; }
     .action-card { min-height:auto; padding:1rem; border-radius:18px; }
 
@@ -406,10 +441,11 @@ with st.sidebar:
                 st.rerun()
 
 active_child = st.session_state.active_child
+safe_active_child = escape(str(active_child))
 
 st.markdown(f"""
 <div class="hero">
-    <h1>👋 Hi {active_child}! Welcome to Magic Spelling World! ✏️</h1>
+    <h1>👋 Hi <span class="child-name">{safe_active_child}!</span> Welcome to Magic Spelling World! ✏️</h1>
     <p>Listen, practice handwriting, and master Chinese & English spelling today!</p>
 </div>
 """, unsafe_allow_html=True)
