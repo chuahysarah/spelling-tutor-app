@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
-ANALYSIS_SCHEMA_VERSION = 2
+ANALYSIS_SCHEMA_VERSION = 3
 
 CHINESE_MEMORY_DICT = {
     "事情": {
@@ -29,12 +29,12 @@ CHINESE_MEMORY_DICT = {
     },
     "学校": {
         "meaning": "School — a place where students learn knowledge and play with friends.",
-        "sentence": "我和朋友每天开心地上学校读书。",
+        "sentence": "我每天开心地去学校和朋友一起读书。",
         "tip": "💡 Memory Trick: Both '学' and '校' have '木' (wood) and roof radicals! Think of a wooden school building!"
     },
     "认真": {
         "meaning": "Serious, attentive, and focused on doing something carefully.",
-        "sentence": "小明认真地听老师讲课和写作业。",
+        "sentence": "小明认真地听老师讲课，也认真地写作业。",
         "tip": "💡 Memory Trick: '认' has '讠' (words) — pay close attention to words when listening carefully!"
     },
     "爸爸": {
@@ -171,6 +171,27 @@ def local_pinyin(text: str) -> str:
     return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
 
 
+def contains_chinese(text: object) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", str(text or "")))
+
+
+def is_valid_english_meaning(text: object) -> bool:
+    value = str(text or "").strip()
+    return bool(re.search(r"[A-Za-z]", value)) and not contains_chinese(value)
+
+
+def is_valid_chinese_example(text: object, target: str) -> bool:
+    value = str(text or "").strip()
+    normalized_value = re.sub(r"\s+", "", value)
+    normalized_target = re.sub(r"\s+", "", target.strip())
+    return (
+        contains_chinese(value)
+        and bool(normalized_target)
+        and normalized_target in normalized_value
+        and value[-1:] in {"。", "！", "？", ".", "!", "?"}
+    )
+
+
 def get_api_key() -> str:
     key = ""
     if "GEMINI_API_KEY" in st.secrets:
@@ -187,28 +208,24 @@ def get_analysis(words: list[str], api_key: str) -> tuple[dict[str, dict[str, An
     if not api_key:
         return {}, "No API key configured."
     
-    prompt = """You are an encouraging primary school spelling tutor for a 7-9 year old child. Analyze every item below. Return ONLY a JSON object keyed by the exact input item.
+    prompt = """You are an expert, careful Mandarin Chinese and English tutor for children aged 7-9. Analyze every item below. Return ONLY a JSON object keyed by the exact input item.
 
 For each item, provide:
 1. language: 'English' or 'Chinese'
 2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
-3. meaning: simple, fun, child-friendly definition.
-   - FOR CHINESE WORDS: Write the definition 100% in simple English so primary school kids easily understand the word!
-   - FOR ENGLISH WORDS: Write definition in simple English.
-4. sentence: short, relatable daily life context sentence (written 100% in Simplified Chinese for Chinese words, English for English words).
-5. spelling_tip: a super fun, child-friendly memory trick! 
-   - For CHINESE: Use a playful mix of English and Chinese explaining radicals and components! (e.g., "'情' has '忄' (heart) on the left side!", "'休' is a person '人' leaning against a tree '木'!").
+3. meaning: For EVERY Chinese input item—single characters, words, phrases, or full sentences—explain its meaning entirely in simple English. Never include Chinese characters in this field. If the input is a full sentence, explain the whole sentence in natural English. For English inputs, define it in simple English.
+4. sentence: For a Chinese input, write one grammatically natural, complete Simplified Chinese sentence that uses the exact input item naturally and meaningfully. Include the exact input text unchanged and end with Chinese sentence punctuation. For a single Chinese character, use it naturally within a common word. If the input itself is already a complete sentence, use that sentence as the example rather than inserting it awkwardly into another sentence. Do not output a fragment, word list, translation, or explanation as the example. For English inputs, write one natural English sentence using the exact input.
+5. spelling_tip: a super fun, child-friendly memory trick!
+   - For CHINESE: Use a playful mix of English and Chinese explaining radicals and components.
    - For ENGLISH: Use fun mnemonics or phonics rules in English.
 6. pinyin: Chinese tone-marked pinyin or empty for English.
-7. sentence_translation: For Chinese example sentences, give a natural, accurate translation in simple English. For English sentences, use an empty string.
-8. sentence_phrase_explanation: For Chinese example sentences, explain the sentence in simple English by breaking it into 2-4 short chunks. Format each chunk as Chinese text — English meaning, and separate chunks with semicolons. For English sentences, give a short child-friendly paraphrase in English.
-Include both new fields for every item. Keep all translation and explanation text in English, even when explaining a Chinese word.
+Do not add fields other than the six listed above. Check that each Chinese meaning is entirely English and each example is a complete, natural sentence that uses its target.
 
 Items: """ + json.dumps(words, ensure_ascii=False)
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}], 
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.0}
     }
     
     clean_token = api_key.strip().strip("'").strip('"')
@@ -364,7 +381,7 @@ analysis = st.session_state.get(f"cached_analysis_{active_child}", {})
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
-    lang = str(info.get("language") or guess_language(word))
+    lang = guess_language(word)  # Do not trust the model to classify Chinese targets.
     with st.expander(f"Word {index + 1}:  {word} ({lang})", expanded=True):
         audio_button(word, lang, f"audio-{word}")
         if lang == "English":
@@ -380,8 +397,21 @@ for index, word in enumerate(words):
         else:
             preset = CHINESE_MEMORY_DICT.get(word, {})
             py = str(info.get("pinyin") or local_pinyin(word))
-            meaning = info.get('meaning') or preset.get('meaning') or f"Chinese word / 词语: {word}"
-            sentence = info.get("sentence") or preset.get('sentence') or f"今天我们要学习 '{word}' 这个词。"
+            candidate_meaning = info.get("meaning")
+            if is_valid_english_meaning(candidate_meaning):
+                meaning = str(candidate_meaning).strip()
+            elif is_valid_english_meaning(preset.get("meaning")):
+                meaning = str(preset["meaning"]).strip()
+            else:
+                meaning = "The English meaning for this item is not available yet. Please ask a grown-up to refresh the word details."
+
+            candidate_sentence = info.get("sentence")
+            if is_valid_chinese_example(candidate_sentence, word):
+                sentence = str(candidate_sentence).strip()
+            elif is_valid_chinese_example(preset.get("sentence"), word):
+                sentence = str(preset["sentence"]).strip()
+            else:
+                sentence = ""
             
             default_tip = f"Notice the structure of '{word}'! Practice the stroke order step-by-step!"
             tip = info.get('spelling_tip') or preset.get('tip') or default_tip
@@ -390,17 +420,10 @@ for index, word in enumerate(words):
             st.write("✍️ **Stroke Order Animation:**")
             render_hanzi_animations(word)
             st.write(f"💡 **Meaning:** {meaning}")
-            st.write(f"💬 **Example:** {sentence}")
-            translation = str(info.get("sentence_translation") or "").strip()
-            phrase_explanation = str(info.get("sentence_phrase_explanation") or "").strip()
-            if translation:
-                st.write(f"🇬🇧 **English Translation:** {translation}")
+            if sentence:
+                st.write(f"💬 **Example:** {sentence}")
             else:
-                st.caption("English translation is not available for this example yet.")
-            if phrase_explanation:
-                st.write(f"🧩 **Phrase-by-Phrase:** {phrase_explanation}")
-            else:
-                st.caption("Phrase explanation is not available for this example yet.")
+                st.caption("A natural example sentence could not be generated. Ask a grown-up to refresh the word details.")
             if sentence:
                 audio_button(sentence, "Chinese", f"sentence-{word}")
             st.write(f"⭐ **Fun Memory Tip (记忆小贴士):** {tip}")
