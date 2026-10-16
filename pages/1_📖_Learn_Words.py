@@ -20,6 +20,35 @@ DEFAULT_LISTS = {
     "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
 }
 
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+
+html, body, [class*="css"], button, input, select {
+    font-family: 'Fredoka', cursive, sans-serif !important;
+    font-size: 1.2rem;
+}
+
+h1 { font-size: 2.8rem !important; color: #0284c7 !important; }
+h2 { font-size: 2.2rem !important; color: #0369a1 !important; }
+h3 { font-size: 1.7rem !important; color: #0f766e !important; }
+
+.stButton > button {
+    font-size: 1.3rem !important;
+    font-weight: 700 !important;
+    border-radius: 18px !important;
+}
+
+.word-card {
+    background: #f0f9ff;
+    border-radius: 20px;
+    padding: 1.2rem;
+    border: 2px solid #bae6fd;
+    margin-bottom: 1rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 def fetch_available_lists() -> dict[str, str]:
     if "archived_lists" in st.session_state and st.session_state.archived_lists:
@@ -123,12 +152,12 @@ def render_hanzi_animations(word: str) -> None:
     scripts = ""
     for i, char in enumerate(chinese_chars):
         div_id = f"target-{i}-{ord(char)}"
-        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 2px solid #bae6fd; border-radius: 12px; background: #ffffff;"></div>'
-        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 90, height: 90, padding: 4, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
+        targets += f'<div id="{div_id}" style="display:inline-block; margin: 4px; border: 3px solid #bae6fd; border-radius: 16px; background: #ffffff;"></div>'
+        scripts += f"HanziWriter.create('{div_id}', '{char}', {{width: 110, height: 110, padding: 6, showOutline: true, strokeAnimationSpeed: 1.5, delayBetweenStrokes: 80}}).loopCharacterAnimation();\n"
 
-    num_rows = (len(chinese_chars) + 4) // 5
-    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:6px;">{targets}</div><script>{scripts}</script></body></html>"""
-    components.html(html_code, height=num_rows * 110 + 15)
+    num_rows = (len(chinese_chars) + 3) // 4
+    html_code = f"""<!DOCTYPE html><html><head><script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script></head><body style="margin:0;padding:0;background:transparent;"><div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">{targets}</div><script>{scripts}</script></body></html>"""
+    components.html(html_code, height=num_rows * 125 + 20)
 
 
 def rename_child_profile(old_name: str, new_name: str):
@@ -140,7 +169,7 @@ def rename_child_profile(old_name: str, new_name: str):
     
     st.session_state.active_child = new_name
 
-    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "mastered_words", "unfamiliar_words"]:
+    for key_prefix in ["active_week", "raw_words", "cached_analysis", "quiz_index", "quiz_score", "quiz_checked", "quiz_logged", "quiz_result", "mastered_words", "unfamiliar_words"]:
         old_key = f"{key_prefix}_{old_name}"
         new_key = f"{key_prefix}_{new_name}"
         if old_key in st.session_state:
