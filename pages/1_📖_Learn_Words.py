@@ -13,6 +13,31 @@ from pypinyin import Style, pinyin
 
 st.set_page_config(page_title="Learn Words 📖", page_icon="📖", layout="centered")
 
+API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
+
+DEFAULT_LISTS = {
+    "Week 1: School & Friends": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
+    "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
+}
+
+
+def fetch_available_lists() -> dict[str, str]:
+    """Fetches word lists from session state or Google Sheets API on direct cold start."""
+    if "archived_lists" in st.session_state and st.session_state.archived_lists:
+        return st.session_state.archived_lists
+
+    if API_URL:
+        try:
+            resp = requests.get(API_URL, params={"action": "get_lists"}, allow_redirects=True, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict) and data:
+                    st.session_state.archived_lists = data
+                    return data
+        except Exception:
+            pass
+    return DEFAULT_LISTS
+
 
 def guess_language(text: str) -> str:
     return "Chinese" if re.search(r"[\u3400-\u9fff]", text) else "English"
@@ -23,7 +48,6 @@ def local_pinyin(text: str) -> str:
 
 
 def get_api_key() -> str:
-    """Extracts and sanitizes the API key from secrets or session state."""
     key = ""
     if "GEMINI_API_KEY" in st.secrets:
         key = str(st.secrets["GEMINI_API_KEY"])
@@ -75,7 +99,6 @@ Items: """ + json.dumps(words, ensure_ascii=False)
                 data = json.loads(match.group())
                 return (data if isinstance(data, dict) else {}), None
         else:
-            # Fallback attempt via URL query param if header fails
             fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
             resp_fb = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
             if resp_fb.status_code == 200:
@@ -130,26 +153,35 @@ with st.sidebar:
 
 st.title("📖 Step 2: Let's Learn Our Words!")
 
-if "archived_lists" in st.session_state and st.session_state.archived_lists:
-    options_list = list(st.session_state.archived_lists.keys())
-    curr_index = options_list.index(st.session_state.get("active_week", options_list[0])) if st.session_state.get("active_week") in options_list else 0
-    selected_week = st.selectbox(
-        "📚 Active Practice List:",
-        options=options_list,
-        index=curr_index
-    )
-    if selected_week != st.session_state.get("active_week"):
-        st.session_state.active_week = selected_week
-        st.session_state.raw_words = st.session_state.archived_lists[selected_week]
-        st.session_state.cached_analysis = {}
-        st.rerun()
+# Ensure archived_lists and active_week are populated on cold start
+available_lists = fetch_available_lists()
+list_titles = list(available_lists.keys())
+
+current_active = st.session_state.get("active_week", "")
+if current_active not in list_titles and list_titles:
+    st.session_state.active_week = list_titles[0]
+    st.session_state.raw_words = available_lists[list_titles[0]]
+
+default_idx = list_titles.index(st.session_state.active_week) if st.session_state.active_week in list_titles else 0
+
+selected_week = st.selectbox(
+    "📚 Active Practice List:",
+    options=list_titles,
+    index=default_idx
+)
+
+if selected_week != st.session_state.get("active_week"):
+    st.session_state.active_week = selected_week
+    st.session_state.raw_words = available_lists[selected_week]
+    st.session_state.cached_analysis = {}
+    st.rerun()
 
 raw_words = st.session_state.get("raw_words", "")
-if not raw_words:
-    st.info("👆 Please go to the Home page to add or select your spelling list first!")
-    st.stop()
-
 words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
+
+if not words:
+    st.warning("⚠️ No words found in the selected list. Please select a different list above!")
+    st.stop()
 
 if "cached_analysis" not in st.session_state:
     st.session_state.cached_analysis = {}
