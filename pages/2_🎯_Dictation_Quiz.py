@@ -297,6 +297,7 @@ if is_chinese:
 
     with col_pad:
         st.markdown("### ✏️ Your Chinese Writing Pad")
+        # update_streamlit=False eliminates mid-stroke lag entirely
         canvas_result = st_canvas(
             fill_color="rgba(255, 255, 255, 0)",
             stroke_width=7,
@@ -305,7 +306,7 @@ if is_chinese:
             height=280,
             width=280,
             drawing_mode="freedraw",
-            update_streamlit=True,
+            update_streamlit=False,
             return_image_data=True,
             key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
         )
