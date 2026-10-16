@@ -30,11 +30,28 @@ def get_gemini_key() -> str:
 
 GEMINI_API_KEY = get_gemini_key()
 
-st.title("🎯 Spelling & Chinese Dictation Quiz")
+DEFAULT_LISTS = {
+    "Week 1: Primary Chinese & English": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
+    "Week 2: Advanced Chinese": "事情\n学习\n朋友\n高兴",
+    "Week 3: English Spelling": "together\nbecause\nbeautiful\ndifferent"
+}
+
+
+def fetch_available_lists() -> dict[str, str]:
+    """Fetches word lists from Google Sheets backend API with local fallback."""
+    if API_URL:
+        try:
+            resp = requests.get(f"{API_URL}?action=get_lists", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict) and data:
+                    return data
+        except Exception:
+            pass
+    return DEFAULT_LISTS
 
 
 def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
-    """Logs the final completed quiz stats into the Google Sheets History tab."""
     if API_URL:
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -53,7 +70,6 @@ def log_completed_quiz(week_title: str, score: int, total_words: int, mastered: 
 
 
 def speak_text(text: str):
-    """Plays audio for English or Chinese target words."""
     try:
         lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -66,7 +82,6 @@ def speak_text(text: str):
 
 
 def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) -> tuple[bool, str]:
-    """Sends handwritten canvas drawing directly to Gemini 1.5 Flash for vision auto-grading."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         
@@ -95,7 +110,6 @@ def grade_handwriting_with_gemini(image_data, target_char: str, api_key: str) ->
             }]
         }
 
-        # Clean JSON payload request without conflicting authorization headers
         resp = requests.post(
             url, 
             json=payload, 
@@ -128,12 +142,47 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-active_week = st.session_state.get("active_week", "")
-raw_words = st.session_state.get("raw_words", "")
-quiz_words = normalize_words(raw_words)
+def reset_quiz_state():
+    st.session_state.quiz_index = 0
+    st.session_state.quiz_score = 0
+    st.session_state.quiz_checked = False
+    st.session_state.quiz_logged = False
+    st.session_state.mastered_words = set()
+    st.session_state.unfamiliar_words = set()
+
+
+st.title("🎯 Spelling & Chinese Dictation Quiz")
+
+# --- INSTANT LIST INITIALIZATION ---
+available_lists = fetch_available_lists()
+list_titles = list(available_lists.keys())
+
+current_active = st.session_state.get("active_week", "")
+if current_active not in list_titles and list_titles:
+    st.session_state.active_week = list_titles[0]
+    st.session_state.raw_words = available_lists[list_titles[0]]
+    reset_quiz_state()
+
+default_idx = list_titles.index(st.session_state.active_week) if st.session_state.active_week in list_titles else 0
+
+selected_list_title = st.selectbox(
+    "📋 Select List to Dictate:",
+    options=list_titles,
+    index=default_idx,
+    help="Choose the weekly list you want to practice now."
+)
+
+# Handle list change on selection
+if selected_list_title != st.session_state.get("active_week"):
+    st.session_state.active_week = selected_list_title
+    st.session_state.raw_words = available_lists[selected_list_title]
+    reset_quiz_state()
+    st.rerun()
+
+quiz_words = normalize_words(st.session_state.get("raw_words", ""))
 
 if not quiz_words:
-    st.warning("⚠️ No words found in the active list. Please select a weekly list on the home page first!")
+    st.warning("⚠️ No words found in the selected list. Please choose a different list above!")
     st.stop()
 
 if "quiz_index" not in st.session_state:
@@ -162,7 +211,7 @@ if current_idx >= total_q:
 
     if not st.session_state.quiz_logged:
         log_completed_quiz(
-            week_title=active_week,
+            week_title=selected_list_title,
             score=final_score,
             total_words=total_q,
             mastered=st.session_state.mastered_words,
@@ -172,10 +221,7 @@ if current_idx >= total_q:
         st.info("✅ Your score and practice details have been saved to the Parent History!")
 
     if st.button("🔄 Restart Quiz", type="primary"):
-        st.session_state.quiz_index = 0
-        st.session_state.quiz_score = 0
-        st.session_state.quiz_checked = False
-        st.session_state.quiz_logged = False
+        reset_quiz_state()
         st.rerun()
     st.stop()
 
@@ -183,7 +229,7 @@ target_word = quiz_words[current_idx]
 is_chinese = bool(re.search(r'[\u4e00-\u9fff]', target_word))
 
 st.progress((current_idx) / total_q)
-st.caption(f"Question {current_idx + 1} of {total_q} — **{active_week}**")
+st.caption(f"Question {current_idx + 1} of {total_q} — **{selected_list_title}**")
 
 st.write("### 🔊 Listen and write down the word:")
 if st.button("🔊 Play Word Sound", type="secondary"):
@@ -205,12 +251,12 @@ canvas_result = st_canvas(
     drawing_mode="freedraw",
     update_streamlit=True,
     return_image_data=True,
-    key=f"canvas_{current_idx}"
+    key=f"canvas_{selected_list_title}_{current_idx}"
 )
 
 # Render text input ONLY for English spelling lists
 if not is_chinese:
-    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{current_idx}")
+    user_answer = st.text_input("Type your spelling answer here:", key=f"quiz_ans_{selected_list_title}_{current_idx}")
 
 col1, col2 = st.columns(2)
 
