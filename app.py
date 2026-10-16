@@ -4,7 +4,12 @@ import json
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
+st.set_page_config(
+    page_title="Magic Spelling World ✏️",
+    page_icon="⭐",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
@@ -26,6 +31,25 @@ h3 { font-size: 1.7rem !important; color: #0f766e !important; }
     font-weight: 700 !important;
     border-radius: 18px !important;
     padding: 0.6rem 1.2rem !important;
+}
+
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background-color: #e0f2fe !important;
+    border-right: 4px solid #bae6fd !important;
+}
+
+[data-testid="stSidebarCollapseButton"] button {
+    background-color: #fde047 !important;
+    border: 2px solid #eab308 !important;
+    border-radius: 12px !important;
+}
+
+[data-testid="stSidebar"] .stSelectbox {
+    background: #ffffff;
+    padding: 10px;
+    border-radius: 16px;
+    border: 2px solid #bae6fd;
 }
 
 .hero {
