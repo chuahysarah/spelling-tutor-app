@@ -10,6 +10,11 @@ st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", la
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+DEFAULT_LISTS = {
+    "Week 1: School & Friends": "学校\n认真\n爸爸\n妈妈\napple\nschool\nfriend",
+    "Week 2: Nature & Family": "mountain\nflower\n事情\n学习"
+}
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
@@ -34,15 +39,14 @@ html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
 def fetch_remote_lists() -> dict[str, str]:
     if API_URL:
         try:
-            # Explicitly pass action=get_lists for consistent Apps Script handling
-            resp = requests.get(f"{API_URL}?action=get_lists", timeout=5)
+            resp = requests.get(API_URL, params={"action": "get_lists"}, allow_redirects=True, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, dict):
+                if isinstance(data, dict) and data:
                     return data
         except Exception:
             pass
-    return {}
+    return DEFAULT_LISTS
 
 
 def save_remote_list(title: str, words: str) -> None:
@@ -72,9 +76,11 @@ def normalize_words(raw: str) -> list[str]:
     return result
 
 
-# Initialize Session State Variables
+fetched = fetch_remote_lists()
 if "archived_lists" not in st.session_state or not st.session_state.archived_lists:
-    st.session_state.archived_lists = fetch_remote_lists()
+    st.session_state.archived_lists = fetched
+else:
+    st.session_state.archived_lists.update(fetched)
 
 if "active_week" not in st.session_state or st.session_state.active_week not in st.session_state.archived_lists:
     if st.session_state.archived_lists:
@@ -82,7 +88,7 @@ if "active_week" not in st.session_state or st.session_state.active_week not in 
     else:
         st.session_state.active_week = ""
 
-if "raw_words" not in st.session_state:
+if "raw_words" not in st.session_state or not st.session_state.raw_words:
     st.session_state.raw_words = st.session_state.archived_lists.get(st.session_state.active_week, "")
 
 if "mastered_words" not in st.session_state:
@@ -93,14 +99,12 @@ if "unfamiliar_words" not in st.session_state:
 if "parent_unlocked" not in st.session_state:
     st.session_state.parent_unlocked = False
 
-# Sidebar Configuration
 with st.sidebar:
     st.subheader("👨‍👩‍👧 For Grown-Ups")
-    api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value=st.session_state.get("api_key", ""))
+    api_key_input = st.text_input("Google Gemini API Key (optional)", type="password", value="")
     if api_key_input:
         st.session_state.api_key = api_key_input.strip()
 
-# Child Section: Select Active Practice Week
 st.subheader("🎒 Step 1: Select Your Week!")
 
 if st.session_state.archived_lists:
@@ -126,7 +130,6 @@ if st.session_state.archived_lists:
 else:
     st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
 
-# Parent Section: PIN Locked Management Controls
 PARENT_PIN = "6666"
 
 with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
@@ -147,7 +150,6 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
 
         st.write("---")
         
-        # 1. Add or Update List
         st.write("### ➕ Add or Update List")
         new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
         new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
@@ -174,7 +176,6 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
 
         st.divider()
 
-        # 2. Delete an Existing List
         st.write("### 🗑️ Delete an Existing List")
         if st.session_state.archived_lists:
             list_to_delete = st.selectbox(
