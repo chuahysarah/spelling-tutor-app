@@ -33,7 +33,7 @@ def get_api_key() -> str | None:
         key = key or st.secrets.get("GOOGLE_API_KEY") or st.secrets.get("GEMINI_API_KEY")
     except Exception:
         pass
-    return key or None
+    return key.strip() if key else None
 
 
 def guess_language(text: str) -> str:
@@ -56,28 +56,37 @@ def local_pinyin(text: str) -> str:
 
 
 @st.cache_data(show_spinner=False, max_entries=64)
-def get_analysis(words: list[str], api_key: str | None) -> dict[str, dict[str, Any]]:
+def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[str, Any]], str | None]:
     if not api_key:
-        return {}
+        return {}, "No API key configured."
+    
     os.environ["GEMINI_API_KEY"] = api_key
     client = genai.Client(api_key=api_key)
     prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character, e.g. ['横','竖','撇','捺']; do not invent detailed paths). For Chinese phrases, give pinyin and character-specific stroke count/radical/structure/stroke-order in fields as short lists where helpful. Keep explanations age-appropriate. Unknown facts should be marked null or '不确定', not guessed. Items: """ + json.dumps(words, ensure_ascii=False)
     
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
-        )
-    except Exception:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
-        )
-        
-    data = json.loads(response.text or "{}")
-    return data if isinstance(data, dict) else {}
+    response = None
+    err_msg = None
+    
+    for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
+            )
+            if response and response.text:
+                break
+        except Exception as e:
+            err_msg = str(e)
+
+    if response and response.text:
+        try:
+            data = json.loads(response.text)
+            return (data if isinstance(data, dict) else {}), None
+        except Exception as parse_err:
+            return {}, f"JSON Parsing error: {parse_err}"
+            
+    return {}, err_msg or "Failed to connect to Gemini API."
 
 
 @st.cache_data(show_spinner=False, max_entries=128)
@@ -159,13 +168,16 @@ if not words:
     st.info("Enter a few words above to get started.")
     st.stop()
 
-key = api_key.strip() or get_api_key()
-try:
+key = api_key.strip() if api_key else get_api_key()
+analysis = {}
+error_detail = None
+
+if key:
     with st.spinner("Preparing your word notes…"):
-        analysis = get_analysis(words, key)
-except Exception as exc:
-    analysis = {}
-    st.warning(f"Gemini analysis isn't available right now ({type(exc).__name__}). You can still practise; Chinese pinyin is provided locally.")
+        analysis, error_detail = get_analysis(words, key)
+
+if error_detail and key:
+    st.warning(f"Gemini analysis is currently limited. Details: `{error_detail}`. Chinese pinyin is still provided locally.")
 
 st.subheader("2. Learn about each word")
 for index, word in enumerate(words):
