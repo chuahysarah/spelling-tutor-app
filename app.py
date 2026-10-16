@@ -1,0 +1,214 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+from typing import Any
+
+import streamlit as st
+from gtts import gTTS
+from google import genai
+from google.genai import types
+from pypinyin import Style, pinyin
+
+st.set_page_config(page_title="Weekly Spelling Practice", page_icon="✏️", layout="centered")
+
+st.markdown("""
+<style>
+.block-container {max-width: 900px; padding-top: 2rem; padding-bottom: 3rem;}
+.hero {padding: 1.35rem 1.5rem; border-radius: 18px; background: linear-gradient(120deg,#eff6ff,#f0fdf4); margin-bottom: 1rem;}
+.hero h1 {margin: 0 0 .35rem 0; color: #17365d;}
+.word-card {padding: 1rem 1.2rem; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; margin: .5rem 0;}
+.small-note {color: #64748b; font-size: .9rem;}
+</style>
+<div class="hero"><h1>✏️ Weekly Spelling Practice</h1><div>Listen, learn, and practise your English and Chinese words.</div></div>
+""", unsafe_allow_html=True)
+
+st.caption("A friendly practice space for 听写 / 默写. Add your weekly list, explore each word, then try a quiz!")
+
+
+def get_api_key() -> str | None:
+    key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    try:
+        key = key or st.secrets.get("GOOGLE_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+    except Exception:
+        pass
+    return key or None
+
+
+def guess_language(text: str) -> str:
+    return "Chinese" if re.search(r"[\u3400-\u9fff]", text) else "English"
+
+
+def normalize_words(raw: str) -> list[str]:
+    seen: set[str] = set()
+    result = []
+    for line in raw.replace("，", "\n").replace(",", "\n").splitlines():
+        item = line.strip()
+        if item and item.casefold() not in seen:
+            seen.add(item.casefold())
+            result.append(item)
+    return result
+
+
+def local_pinyin(text: str) -> str:
+    return " ".join(part[0] for part in pinyin(text, style=Style.TONE, heteronym=False, errors=lambda x: list(x)))
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def get_analysis(words: list[str], api_key: str | None) -> dict[str, dict[str, Any]]:
+    if not api_key:
+        return {}
+    client = genai.Client(api_key=api_key)
+    prompt = """You are a careful primary-school spelling tutor. Analyze every item below. Return ONLY a JSON object keyed by the exact input item. For each item, provide: language ('English' or 'Chinese'); syllables (English syllables separated with hyphens; for Chinese give one syllable per character, preferably tone-marked pinyin); meaning (simple child-friendly definition/translation); sentence (short context sentence); spelling_tip (one memorable spelling/phonics tip, mention silent letters/prefix/suffix if applicable); pinyin (Chinese tone-marked pinyin or empty for English); stroke_count (integer only if you are confident, otherwise null); radical (Chinese radical or empty); structure (e.g. 左右结构/上下结构/独体字 or empty); strokes (a concise ordered list of stroke names for each character, e.g. ['横','竖','撇','捺']; do not invent detailed paths). For Chinese phrases, give pinyin and character-specific stroke count/radical/structure/stroke-order in fields as short lists where helpful. Keep explanations age-appropriate. Unknown facts should be marked null or '不确定', not guessed. Items: """ + json.dumps(words, ensure_ascii=False)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
+    )
+    data = json.loads(response.text or "{}")
+    return data if isinstance(data, dict) else {}
+
+
+@st.cache_data(show_spinner=False, max_entries=128)
+def make_audio(text: str, lang: str) -> bytes:
+    from io import BytesIO
+    audio = BytesIO()
+    gTTS(text=text, lang=lang, slow=False).write_to_fp(audio)
+    return audio.getvalue()
+
+
+def audio_button(text: str, language: str, key: str) -> None:
+    lang = "zh-CN" if language == "Chinese" else "en"
+    try:
+        st.audio(make_audio(text, lang), format="audio/mp3")
+    except Exception as exc:
+        st.info(f"Audio could not be loaded right now. Please check your internet connection. ({type(exc).__name__})")
+
+
+def show_analysis(word: str, info: dict[str, Any]) -> None:
+    language = str(info.get("language") or guess_language(word))
+    st.markdown(f'<div class="word-card"><h3 style="margin:0">{word}</h3></div>', unsafe_allow_html=True)
+    audio_button(word, language, f"audio-{word}")
+    if language == "English":
+        cols = st.columns(2)
+        cols[0].markdown(f"**Syllables:** {info.get('syllables', '—')}")
+        cols[1].markdown(f"**Meaning:** {info.get('meaning', '—')}")
+        st.markdown(f"**Example:** {info.get('sentence', '—')}")
+        st.markdown(f"**Spelling tip:** {info.get('spelling_tip', '—')}")
+    else:
+        py = str(info.get("pinyin") or local_pinyin(word))
+        st.markdown(f"**拼音 Pinyin:** {py}")
+        if py:
+            st.caption("Listen to the Chinese word and its pronunciation:")
+            audio_button(py, "Chinese", f"pinyin-{word}")
+        st.markdown(f"**意思 Meaning:** {info.get('meaning', '—')}")
+        st.markdown(f"**例句 Example:** {info.get('sentence', '—')}")
+        st.markdown(f"**总笔画 Stroke count:** {info.get('stroke_count') or 'Please verify with your class dictionary'}")
+        st.markdown(f"**部首 Radical:** {info.get('radical') or 'Please verify with your class dictionary'}")
+        st.markdown(f"**结构 Structure:** {info.get('structure') or '—'}")
+        strokes = info.get("strokes")
+        if strokes:
+            st.markdown("**笔顺 Stroke order:** " + ("；".join(strokes) if isinstance(strokes, list) else str(strokes)))
+        st.markdown(f"**记忆小贴士 Tip:** {info.get('spelling_tip', '—')}")
+        st.caption("Stroke details are AI-generated study hints; check your textbook or teacher for the required stroke order.")
+
+
+if "raw_words" not in st.session_state:
+    st.session_state.raw_words = ""
+if "quiz_index" not in st.session_state:
+    st.session_state.quiz_index = 0
+if "quiz_score" not in st.session_state:
+    st.session_state.quiz_score = 0
+if "quiz_checked" not in st.session_state:
+    st.session_state.quiz_checked = False
+if "quiz_answer" not in st.session_state:
+    st.session_state.quiz_answer = ""
+
+with st.sidebar:
+    st.subheader("For grown-ups")
+    st.markdown("Add a Gemini API key for word-by-word explanations. Without one, Chinese pinyin still works, but detailed explanations are limited.")
+    api_key = st.text_input("Google Gemini API key (optional)", type="password", value=get_api_key() or "", help="Stored only for this session unless configured in Streamlit secrets.")
+    st.caption("Audio uses gTTS and needs an internet connection.")
+    st.divider()
+    st.markdown("**Tip:** One word or phrase per line. English, 中文, or a mix are welcome.")
+
+st.subheader("1. Add this week's words")
+with st.form("word_list_form"):
+    raw = st.text_area("Your spelling list", value=st.session_state.raw_words, height=150, placeholder="beautiful\nfriend\n学校\n认真", label_visibility="collapsed")
+    submitted = st.form_submit_button("Save my list", type="primary")
+if submitted:
+    st.session_state.raw_words = raw
+    st.session_state.quiz_index = 0
+    st.session_state.quiz_score = 0
+    st.session_state.quiz_checked = False
+    st.session_state.quiz_answer = ""
+
+words = normalize_words(st.session_state.raw_words)
+if not words:
+    st.info("Enter a few words above to get started.")
+    st.stop()
+
+key = api_key.strip() or get_api_key()
+try:
+    with st.spinner("Preparing your word notes…"):
+        analysis = get_analysis(words, key)
+except Exception as exc:
+    analysis = {}
+    st.warning(f"Gemini analysis isn't available right now ({type(exc).__name__}). You can still practise; Chinese pinyin is provided locally.")
+
+st.subheader("2. Learn about each word")
+for index, word in enumerate(words):
+    info = analysis.get(word, {})
+    with st.expander(f"{index + 1}. {word} · {guess_language(word)}", expanded=False):
+        show_analysis(word, info)
+
+st.divider()
+st.subheader("3. Dictation quiz")
+st.write("Listen or read a hint, then type the spelling without looking at the answer.")
+if st.session_state.quiz_index >= len(words):
+    st.success(f"Great work! You finished the list. Score: {st.session_state.quiz_score} / {len(words)}")
+    if st.button("Try again", type="primary"):
+        st.session_state.quiz_index = 0
+        st.session_state.quiz_score = 0
+        st.session_state.quiz_checked = False
+        st.session_state.quiz_answer = ""
+        st.rerun()
+else:
+    idx = st.session_state.quiz_index
+    target = words[idx]
+    info = analysis.get(target, {})
+    st.progress(idx / len(words), text=f"Word {idx + 1} of {len(words)} · Score {st.session_state.quiz_score}")
+    with st.container(border=True):
+        st.markdown(f"### Word {idx + 1}")
+        q1, q2 = st.columns([1, 2])
+        with q1:
+            audio_button(target, str(info.get("language") or guess_language(target)), f"quiz-audio-{idx}")
+            if guess_language(target) == "Chinese":
+                st.caption(f"Pinyin: {info.get('pinyin') or local_pinyin(target)}")
+        with q2:
+            hint = info.get("meaning") or info.get("sentence") or "Listen carefully and remember your word."
+            st.markdown(f"**Hint:** {hint}")
+        if st.button("Show another hint", key=f"hint-{idx}"):
+            st.info(info.get("spelling_tip") or (f"Pinyin: {info.get('pinyin') or local_pinyin(target)}" if guess_language(target) == "Chinese" else "Think about the sounds and syllables."))
+        with st.form(f"quiz-form-{idx}"):
+            answer = st.text_input("Type your answer", key=f"answer-input-{idx}", disabled=st.session_state.quiz_checked)
+            check = st.form_submit_button("Check answer", type="primary", disabled=st.session_state.quiz_checked)
+        if check:
+            st.session_state.quiz_answer = answer.strip()
+            st.session_state.quiz_checked = True
+            if st.session_state.quiz_answer.casefold() == target.casefold():
+                st.session_state.quiz_score += 1
+            st.rerun()
+        if st.session_state.quiz_checked:
+            if st.session_state.quiz_answer.casefold() == target.casefold():
+                st.success("Correct! Well done!")
+            else:
+                st.error(f"Not quite. The answer is: **{target}**")
+            if st.button("Next word →" if idx + 1 < len(words) else "Finish quiz", type="primary", key=f"next-{idx}"):
+                st.session_state.quiz_index += 1
+                st.session_state.quiz_checked = False
+                st.session_state.quiz_answer = ""
+                st.rerun()
+
+st.caption("Made for learning. Chinese stroke counts and radicals may vary by dictionary or curriculum; please confirm important details with a trusted class resource.")
