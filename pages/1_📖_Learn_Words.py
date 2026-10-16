@@ -23,7 +23,7 @@ def local_pinyin(text: str) -> str:
 
 
 def get_api_key() -> str | None:
-    return st.session_state.get("api_key") or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    return st.session_state.get("api_key") or st.secrets.get("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
@@ -33,12 +33,16 @@ def get_available_models(api_key: str) -> list[str]:
         resp = requests.get(url, timeout=4)
         if resp.status_code == 200:
             models_data = resp.json().get("models", [])
-            valid = [m.get("name", "").replace("models/", "") for m in models_data if "generateContent" in m.get("supportedGenerationMethods", []) and "flash" in m.get("name", "").lower()]
+            valid = [
+                m.get("name", "").replace("models/", "") 
+                for m in models_data 
+                if "generateContent" in m.get("supportedGenerationMethods", []) and "flash" in m.get("name", "").lower()
+            ]
             if valid:
                 return valid
     except Exception:
         pass
-    return ["gemini-2.5-flash", "gemini-1.5-flash-latest"]
+    return ["gemini-1.5-flash", "gemini-1.5-flash-8b"]
 
 
 def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[str, Any]], str | None]:
@@ -50,10 +54,10 @@ def get_analysis(words: list[str], api_key: str | None) -> tuple[dict[str, dict[
 For each item, provide:
 1. language: 'English' or 'Chinese'
 2. syllables: English syllables with hyphens; for Chinese give tone-marked pinyin.
-3. meaning: simple, fun, child-friendly definition (mix English/Chinese explanations so primary school kids understand easily).
+3. meaning: simple, fun, child-friendly definition.
 4. sentence: short, relatable daily life context sentence.
 5. spelling_tip: a super fun, child-friendly memory trick or phonics hint! 
-   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth) because...", "Fun story: '休' is a person '人' leaning against a tree '木' to rest!").
+   - For CHINESE: Use a playful mix of English and Chinese! (e.g., "Look at the left side! It has '口' (mouth)...").
    - For ENGLISH: Use fun mnemonics or phonics rules (e.g., "Big Elephants Are Ugly = B-E-A-U-tiful!").
 6. pinyin: Chinese tone-marked pinyin or empty for English.
 
@@ -66,7 +70,7 @@ Items: """ + json.dumps(words, ensure_ascii=False)
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
-            resp = requests.post(url, json=payload, timeout=10)
+            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
             if resp.status_code == 200:
                 data = json.loads(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
                 return (data if isinstance(data, dict) else {}), None
@@ -119,7 +123,6 @@ with st.sidebar:
 
 st.title("📖 Step 2: Let's Learn Our Words!")
 
-# Week Switcher Bar at the top of Learn Words page
 if "archived_lists" in st.session_state and st.session_state.archived_lists:
     selected_week = st.selectbox(
         "📚 Active Practice List:",
@@ -134,7 +137,7 @@ if "archived_lists" in st.session_state and st.session_state.archived_lists:
 
 raw_words = st.session_state.get("raw_words", "")
 if not raw_words:
-    st.info("👆 Please go to the Home page to add your spelling list first!")
+    st.info("👆 Please go to the Home page to select or add your spelling list first!")
     st.stop()
 
 words = [line.strip() for line in raw_words.replace("，", "\n").replace(",", "\n").splitlines() if line.strip()]
@@ -144,7 +147,7 @@ if "cached_analysis" not in st.session_state:
 
 key = get_api_key()
 
-if key and not st.session_state.cached_analysis:
+if key and not st.session_state.cached_analysis and words:
     with st.spinner("✨ Fetching child-friendly meanings and memory tricks..."):
         data, err = get_analysis(words, key)
         if not err and data:
@@ -155,7 +158,7 @@ if key and not st.session_state.cached_analysis:
 analysis = st.session_state.cached_analysis
 
 if not key:
-    st.warning("⚠️ No Gemini API Key found. Add your Gemini API Key in the sidebar to generate meanings, examples, and memory tricks!")
+    st.warning("⚠️ No Gemini API Key configured. Add your API Key in the sidebar or Secrets to generate definitions and memory tricks!")
 
 for index, word in enumerate(words):
     info = analysis.get(word, {})
