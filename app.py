@@ -52,7 +52,7 @@ else:
 
 # Initialize Multi-Child Profiles
 if "children" not in st.session_state:
-    st.session_state.children = ["Alex", "Emma"]
+    st.session_state.children = ["Jack", "Luc"]
 
 if "active_child" not in st.session_state:
     st.session_state.active_child = st.session_state.children[0]
