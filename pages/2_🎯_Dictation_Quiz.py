@@ -187,19 +187,24 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("✅ Grade Handwriting", type="primary"):
         if is_chinese:
-            img_data = getattr(canvas_result, "image_data", None)
-            
-            # Robust stroke verification check across channels
+            img_data = None
             has_strokes = False
-            if img_data is not None and isinstance(img_data, np.ndarray) and img_data.size > 0:
-                # Check for drawn stroke presence via alpha channel or RGB variance
-                has_alpha_strokes = np.any(img_data[:, :, 3] > 0)
-                has_rgb_strokes = np.any(img_data[:, :, :3] < 200)
-                has_strokes = has_alpha_strokes or has_rgb_strokes
 
-            if not has_strokes and img_data is None:
+            # Wrap in try/except to safely handle RuntimeError from streamlit-drawable-canvas
+            try:
+                if canvas_result is not None:
+                    img_data = canvas_result.image_data
+                    if img_data is not None and isinstance(img_data, np.ndarray) and img_data.size > 0:
+                        has_alpha_strokes = np.any(img_data[:, :, 3] > 0)
+                        has_rgb_strokes = np.any(img_data[:, :, :3] < 200)
+                        has_strokes = has_alpha_strokes or has_rgb_strokes
+            except (RuntimeError, AttributeError, Exception):
+                img_data = None
+                has_strokes = False
+
+            if not has_strokes or img_data is None:
                 st.warning("✏️ Please write the character on the practice pad before grading!")
-            elif GEMINI_API_KEY and img_data is not None:
+            elif GEMINI_API_KEY:
                 with st.spinner("Analyzing Chinese handwriting..."):
                     is_correct, feedback = grade_handwriting_with_gemini(
                         img_data, target_word, GEMINI_API_KEY
