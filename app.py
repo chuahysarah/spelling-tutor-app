@@ -5,11 +5,9 @@ import os
 import re
 import requests
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="Magic Spelling World ✏️", page_icon="⭐", layout="centered")
-
-# Retrieve Google Apps Script Web App URL from Secrets or session state
-API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
 st.markdown("""
 <style>
@@ -32,36 +30,38 @@ html, body, [class*="css"] { font-family: 'Fredoka', cursive, sans-serif; }
 """, unsafe_allow_html=True)
 
 
-def fetch_remote_lists() -> dict[str, str]:
-    if API_URL:
-        try:
-            resp = requests.get(API_URL, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, dict) and data:
-                    return data
-        except Exception:
-            pass
+# Initialize Google Sheets Connection safely
+def load_persistent_lists() -> dict[str, str]:
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read(ttl=0)
+        result = {}
+        for _, row in df.iterrows():
+            title = str(row["week_title"]).strip()
+            words = str(row["words"]).replace("\\n", "\n").strip()
+            if title and words:
+                result[title] = words
+        if result:
+            return result
+    except Exception:
+        pass
+    
     return {
         "Week 1: School & Friends": "beautiful\nfriend\n学校\n认真",
         "Week 2: Nature & Family": "mountain\nflower\n爸爸\n妈妈",
     }
 
 
-def save_remote_list(title: str, words: str) -> None:
-    if API_URL:
-        try:
-            requests.post(API_URL, json={"action": "save", "title": title, "words": words}, timeout=5)
-        except Exception as e:
-            st.error(f"Failed to sync save: {e}")
-
-
-def delete_remote_list(title: str) -> None:
-    if API_URL:
-        try:
-            requests.post(API_URL, json={"action": "delete", "title": title}, timeout=5)
-        except Exception as e:
-            st.error(f"Failed to sync delete: {e}")
+def save_persistent_lists(data: dict[str, str]) -> None:
+    try:
+        import pandas as pd
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        rows = [{"week_title": k, "words": v.replace("\n", "\\n")} for k, v in data.items()]
+        df = pd.DataFrame(rows)
+        conn.update(data=df)
+        st.success("Synced live to database!")
+    except Exception as e:
+        st.warning(f"Saved locally to active session.")
 
 
 def normalize_words(raw: str) -> list[str]:
@@ -77,7 +77,7 @@ def normalize_words(raw: str) -> list[str]:
 
 # Initialize Persistent Archive in Session State
 if "archived_lists" not in st.session_state:
-    st.session_state.archived_lists = fetch_remote_lists()
+    st.session_state.archived_lists = load_persistent_lists()
 
 if "active_week" not in st.session_state or st.session_state.active_week not in st.session_state.archived_lists:
     if st.session_state.archived_lists:
@@ -92,6 +92,9 @@ if "mastered_words" not in st.session_state:
     st.session_state.mastered_words = set()
 if "unfamiliar_words" not in st.session_state:
     st.session_state.unfamiliar_words = set()
+
+if "parent_unlocked" not in st.session_state:
+    st.session_state.parent_unlocked = False
 
 # Sidebar Configuration
 with st.sidebar:
@@ -126,18 +129,23 @@ if st.session_state.archived_lists:
 else:
     st.warning("No spelling lists available. Unlock the Parent Area below to add a new list!")
 
-# Parent Section: PIN Locked Area
+# Parent Section: Clean Safe Authentication Flow
 PARENT_PIN = "6666"
 
 with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expanded=False):
     st.caption("Grown-ups only! Enter PIN to unlock management controls.")
-    entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="parent_pin_input")
 
-    if entered_pin == PARENT_PIN:
+    if not st.session_state.parent_unlocked:
+        entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="pin_entry_field")
+        if entered_pin == PARENT_PIN:
+            st.session_state.parent_unlocked = True
+            st.rerun()
+        elif entered_pin != "":
+            st.error("❌ Incorrect PIN. Please try again.")
+    else:
         st.success("🔓 Unlocked!")
-        
         if st.button("🔒 Lock Parent Area Now", type="secondary"):
-            st.session_state.parent_pin_input = ""
+            st.session_state.parent_unlocked = False
             st.rerun()
 
         st.write("---")
@@ -147,12 +155,12 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
         new_week_title = st.text_input("Week Title / Name:", placeholder="e.g., Week 3: Animals & Weather")
         new_week_words = st.text_area("Spelling Words (one word per line):", height=120, placeholder="elephant\nrainbow\n动物\n天气")
         
-        if st.button("💾 Save to Google Sheets Database", type="primary"):
+        if st.button("💾 Save List", type="primary"):
             title_clean = new_week_title.strip()
             words_clean = new_week_words.strip()
             if title_clean and words_clean:
                 st.session_state.archived_lists[title_clean] = words_clean
-                save_remote_list(title_clean, words_clean)
+                save_persistent_lists(st.session_state.archived_lists)
                 
                 st.session_state.active_week = title_clean
                 st.session_state.raw_words = words_clean
@@ -162,8 +170,8 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                 st.session_state.quiz_checked = False
                 st.session_state.cached_analysis = {}
 
-                # Auto-lock on save
-                st.session_state.parent_pin_input = ""
+                # Safely re-lock panel upon saving
+                st.session_state.parent_unlocked = False
                 st.rerun()
             else:
                 st.warning("Please enter both a title and words before saving.")
@@ -180,7 +188,7 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
             )
             if st.button(f"❌ Delete '{list_to_delete}'", type="secondary"):
                 del st.session_state.archived_lists[list_to_delete]
-                delete_remote_list(list_to_delete)
+                save_persistent_lists(st.session_state.archived_lists)
                 
                 if list_to_delete == st.session_state.active_week:
                     if st.session_state.archived_lists:
@@ -191,13 +199,10 @@ with st.expander("🔒 Parent Area: Manage Spelling Lists (PIN Required)", expan
                         st.session_state.raw_words = ""
                     st.session_state.cached_analysis = {}
 
-                st.session_state.parent_pin_input = ""
+                st.session_state.parent_unlocked = False
                 st.rerun()
         else:
             st.caption("No archived lists to delete.")
-            
-    elif entered_pin != "":
-        st.error("❌ Incorrect PIN. Please try again.")
 
 words = normalize_words(st.session_state.raw_words)
 if words:
