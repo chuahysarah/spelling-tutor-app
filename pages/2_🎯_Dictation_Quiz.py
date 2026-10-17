@@ -272,10 +272,6 @@ if f"unfamiliar_words_{active_child}" not in st.session_state:
 
 total_q = len(quiz_words)
 current_idx = st.session_state[f"quiz_index_{active_child}"]
-chinese_word_indices = [
-    idx for idx, word in enumerate(quiz_words)
-    if re.search(r'[\u4e00-\u9fff]', word)
-]
 pad_fingerprint = hashlib.sha256(
     (active_child + "\0" + selected_list_title + "\0" + "\0".join(quiz_words)).encode("utf-8")
 ).hexdigest()[:12]
@@ -321,34 +317,38 @@ with audio_col1:
 
 st.write("---")
 
-if chinese_word_indices:
-    st.markdown(f"### ✏️ Chinese Writing Pads — {len(chinese_word_indices)} boxes")
-    st.caption("Write each Chinese answer in the numbered box that matches its question. English questions use the typed-answer field only.")
-    pad_columns = st.columns(2, gap="medium")
-    for pad_order, word_idx in enumerate(chinese_word_indices):
-        pad_widget_key = f"writing_pad_{pad_fingerprint}_{word_idx}"
-        with pad_columns[pad_order % 2]:
-            with st.container(border=True):
-                current_label = " — CURRENT QUESTION" if word_idx == current_idx else ""
-                st.markdown(f"**Question {word_idx + 1} of {total_q}{current_label}**")
-                st_canvas(
-                    fill_color="rgba(255, 255, 255, 0)",
-                    stroke_width=7,
-                    stroke_color="#000000",
-                    background_color="#ffffff",
-                    height=220,
-                    width=220,
-                    drawing_mode="freedraw",
-                    update_streamlit=False,
-                    key=pad_widget_key,
-                )
-
-    st.write("---")
-
 if is_chinese:
-    if st.session_state[f"quiz_checked_{active_child}"]:
-        st.markdown(f"### 🔍 Correct Word: **{target_word}**")
-        render_hanzi_animations(target_word)
+    character_pads = re.findall(r'[\u4e00-\u9fff]', target_word)
+    pad_col, answer_col = st.columns([1, 1], gap="medium")
+
+    with pad_col:
+        st.markdown(f"### ✏️ Chinese Writing Pads — {len(character_pads)} boxes")
+        st.caption("Write one character in each box. Check your answer to reveal the word and stroke guide.")
+        pad_columns = st.columns(2, gap="small")
+        for character_idx, _character in enumerate(character_pads):
+            pad_widget_key = f"writing_pad_{pad_fingerprint}_{current_idx}_{character_idx}"
+            with pad_columns[character_idx % 2]:
+                with st.container(border=True):
+                    st.markdown(f"**Character {character_idx + 1} of {len(character_pads)}**")
+                    st_canvas(
+                        fill_color="rgba(255, 255, 255, 0)",
+                        stroke_width=7,
+                        stroke_color="#000000",
+                        background_color="#ffffff",
+                        height=170,
+                        width=170,
+                        drawing_mode="freedraw",
+                        update_streamlit=False,
+                        key=pad_widget_key,
+                    )
+
+    with answer_col:
+        if st.session_state[f"quiz_checked_{active_child}"]:
+            st.markdown(f"### 🔍 Correct Word: **{target_word}**")
+            render_hanzi_animations(target_word)
+        else:
+            st.markdown("### 🔎 Check your writing")
+            st.caption("The correct word and stroke guide will appear here after you check.")
 
     st.write("---")
 
