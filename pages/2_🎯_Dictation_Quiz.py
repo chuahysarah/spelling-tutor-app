@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from shared_theme import apply_shared_theme
+from audio_prefetch import AudioPrefetcher
 import streamlit.components.v1 as components
 from gtts import gTTS
-from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(
     page_title="Dictation Quiz 🎯",
@@ -45,15 +45,8 @@ st.markdown("""
 [data-testid="stProgress"] { margin:.7rem 0 1rem; }
 [data-testid="stAlert"] { border:2px solid #c6d7f2; }
 [data-testid="stAudio"] { border-radius:16px; }
-[data-testid="stCanvas"] {
-    border:3px solid #a9c4e8 !important; border-radius:18px !important;
-    box-shadow:0 6px 18px rgba(23,63,145,.10);
-}
 [data-testid="stTextInput"] input:disabled { color:#1f2937 !important; background:#f1f5f9 !important; }
 [data-testid="stHorizontalBlock"] [data-testid="stColumn"] { min-width:0; }
-@media(max-width:640px) {
-    [data-testid="stCanvas"] canvas { max-width:100% !important; height:auto !important; }
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,13 +119,71 @@ def generate_speech_audio(text: str, lang: str) -> bytes:
     return fp.getvalue()
 
 
+@st.cache_resource(show_spinner=False)
+def get_audio_prefetcher() -> AudioPrefetcher:
+    return AudioPrefetcher(generate_speech_audio, max_workers=2)
+
+
+def speech_language(text: str) -> str:
+    return "zh-cn" if re.search(r'[\u4e00-\u9fff]', text) else "en"
+
+
+def prefetch_speech_audio(text: str) -> None:
+    get_audio_prefetcher().prefetch(text, speech_language(text))
+
+
 def speak_text(text: str):
     try:
-        lang = 'zh-cn' if re.search(r'[\u4e00-\u9fff]', text) else 'en'
-        audio_bytes = generate_speech_audio(text, lang)
+        lang = speech_language(text)
+        audio_bytes = get_audio_prefetcher().prefetch(text, lang).result()
         st.audio(audio_bytes, format="audio/mp3", autoplay=True)
     except Exception:
         st.warning("Audio playback failed.")
+
+
+def render_character_writing_pads(count: int, instance_key: str) -> None:
+    """Render separate, fast native-canvas boxes inside a single iframe."""
+    if count <= 0:
+        return
+
+    pad_markup = "".join(
+        f'<section class="pad"><strong>Character {idx + 1} of {count}</strong>'
+        f'<canvas class="writepad" width="170" height="170" '
+        f'aria-label="Writing pad for character {idx + 1} of {count}" tabindex="0"></canvas>'
+        f'<button type="button" class="clear" data-pad="{idx}" '
+        f'aria-label="Clear character {idx + 1}">Clear this box</button></section>'
+        for idx in range(count)
+    )
+    html_code = '''<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}body{margin:0;padding:4px;font-family:Arial,sans-serif;color:#1f2937}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pad{min-width:0;border:2px solid #94a3b8;border-radius:12px;padding:8px;background:#fff}
+.pad strong{display:block;margin:0 0 6px;font-size:15px;line-height:20px}
+.writepad{display:block;width:min(100%,170px);height:auto;aspect-ratio:1;background:#fff;
+border:2px solid #0f766e;border-radius:8px;touch-action:none;cursor:crosshair}
+.clear{margin-top:6px;min-height:36px;border:1px solid #1d4ed8;border-radius:8px;
+background:#eff6ff;color:#1e3a8a;font-size:14px;font-weight:700;padding:4px 10px;cursor:pointer}
+.clear:focus-visible,.writepad:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+</style></head><body><div class="grid" data-question-key="__QUESTION_KEY__">__PAD_MARKUP__</div>
+<script>
+for(const canvas of document.querySelectorAll('.writepad')){
+ const ctx=canvas.getContext('2d');ctx.lineWidth=7;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#111827';
+ let drawing=false;
+ const point=e=>{const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height}};
+ canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;e.preventDefault();drawing=true;canvas.setPointerCapture(e.pointerId);const p=point(e);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+0.1,p.y+0.1);ctx.stroke()});
+ canvas.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke()});
+ const finish=e=>{if(!drawing)return;drawing=false;ctx.closePath();if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId)};
+ canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
+}
+document.querySelectorAll('.clear').forEach(button=>button.addEventListener('click',()=>{
+ const canvas=button.closest('.pad').querySelector('.writepad');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height)
+}));
+</script></body></html>'''
+    html_code = html_code.replace("__QUESTION_KEY__", instance_key).replace("__PAD_MARKUP__", pad_markup)
+    rows = (count + 1) // 2
+    components.html(html_code, height=rows * 280 + 20, scrolling=False)
 
 
 def render_hanzi_animations(word: str) -> None:
@@ -305,6 +356,8 @@ if current_idx >= total_q:
 
 target_word = quiz_words[current_idx]
 is_chinese = bool(re.search(r'[\u4e00-\u9fff]', target_word))
+for upcoming_word in quiz_words[current_idx:current_idx + 2]:
+    prefetch_speech_audio(upcoming_word)
 
 st.progress((current_idx) / total_q)
 st.caption(f"Question {current_idx + 1} of {total_q} — **{selected_list_title}**")
@@ -324,23 +377,10 @@ if is_chinese:
     with pad_col:
         st.markdown(f"### ✏️ Chinese Writing Pads — {len(character_pads)} boxes")
         st.caption("Write one character in each box. Check your answer to reveal the word and stroke guide.")
-        pad_columns = st.columns(2, gap="small")
-        for character_idx, _character in enumerate(character_pads):
-            pad_widget_key = f"writing_pad_{pad_fingerprint}_{current_idx}_{character_idx}"
-            with pad_columns[character_idx % 2]:
-                with st.container(border=True):
-                    st.markdown(f"**Character {character_idx + 1} of {len(character_pads)}**")
-                    st_canvas(
-                        fill_color="rgba(255, 255, 255, 0)",
-                        stroke_width=7,
-                        stroke_color="#000000",
-                        background_color="#ffffff",
-                        height=170,
-                        width=170,
-                        drawing_mode="freedraw",
-                        update_streamlit=False,
-                        key=pad_widget_key,
-                    )
+        render_character_writing_pads(
+            len(character_pads),
+            f"{pad_fingerprint}_{current_idx}",
+        )
 
     with answer_col:
         if st.session_state[f"quiz_checked_{active_child}"]:
