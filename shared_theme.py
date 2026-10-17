@@ -38,6 +38,14 @@ def apply_shared_theme() -> None:
             color:var(--blue) !important; font:800 2rem/1.2 'Baloo 2','Trebuchet MS',sans-serif !important;
             letter-spacing:-.02em;
         }
+        /* Standalone page titles use the same centered hero treatment as Home. */
+        [data-testid="stMainBlockContainer"] h1 {
+            display:block; width:100%; box-sizing:border-box; text-align:center !important;
+            margin:.45rem 0 1.25rem !important; padding:1rem 1.25rem !important;
+            border:2px solid #c6a14e; border-radius:24px;
+            background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 48%,#d9eeff 100%);
+            box-shadow:0 8px 22px rgba(62,83,132,.10);
+        }
         h2, [data-testid="stMarkdownContainer"] h2 {
             color:var(--purple) !important; font:800 1.625rem/1.25 'Baloo 2','Trebuchet MS',sans-serif !important;
         }
@@ -47,12 +55,26 @@ def apply_shared_theme() -> None:
         [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label {
             color:var(--ink) !important; font-size:1.125rem !important; line-height:1.4; font-weight:700;
         }
-        .stButton > button, [data-testid="stFormSubmitButton"] button {
+        .stButton > button, [data-testid="stFormSubmitButton"] button,
+        button[data-testid^="stBaseButton-"] {
+            display:flex !important; align-items:center !important; justify-content:center !important;
+            text-align:center !important; white-space:normal !important;
             min-height:2.75rem; border:2px solid var(--blue) !important; border-radius:16px !important;
             padding:.65rem 1.15rem !important; background:var(--blue) !important; color:#fff !important;
             font:700 1.125rem 'Nunito','Trebuchet MS',Arial,sans-serif !important;
             box-shadow:0 4px 0 var(--blue-dark),0 8px 16px rgba(49,88,184,.15) !important;
             transition:transform .15s ease,box-shadow .15s ease,background-color .15s ease;
+        }
+        /* Streamlit nests button labels in inner div/span/p nodes; set text color there too. */
+        .stButton > button *, [data-testid="stFormSubmitButton"] button *,
+        button[data-testid^="stBaseButton-"] * {
+            color:#fff !important; font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
+            text-align:center !important;
+        }
+        .stButton > button > div, [data-testid="stFormSubmitButton"] button > div,
+        button[data-testid^="stBaseButton-"] > div {
+            display:flex !important; align-items:center !important; justify-content:center !important;
+            width:100%;
         }
         .stButton > button:hover, [data-testid="stFormSubmitButton"] button:hover {
             background:var(--blue-dark) !important; border-color:var(--blue-dark) !important; transform:translateY(-1px);
@@ -113,6 +135,9 @@ def apply_shared_theme() -> None:
         hr { border-color:#e6ddf7 !important; }
         @media (max-width:640px) {
             [data-testid="stMainBlockContainer"] { padding:1.1rem 1rem 2rem; }
+            [data-testid="stMainBlockContainer"] h1 { padding:.85rem .75rem !important; font-size:1.65rem !important; }
+            .stButton > button, [data-testid="stFormSubmitButton"] button,
+            button[data-testid^="stBaseButton-"] { width:100% !important; min-height:48px !important; }
             [data-testid="stHorizontalBlock"] { flex-direction:column !important; gap:.7rem !important; }
             [data-testid="stHorizontalBlock"] [data-testid="stColumn"] { width:100% !important; min-width:100% !important; }
         }
