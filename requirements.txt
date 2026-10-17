@@ -6,3 +6,5 @@ pillow
 streamlit-drawable-canvas
 google-generativeai
 numpy
+altair
+pandas
