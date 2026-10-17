@@ -3,7 +3,7 @@ requests
 gTTS
 pypinyin
 pillow
-streamlit-drawable-canvas
+streamlit-drawable-canvas-fix==0.9.8
 google-generativeai
 numpy
 altair
