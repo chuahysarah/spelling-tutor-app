@@ -20,13 +20,13 @@ from practice_bookmarks import (
     show_bookmark_feedback,
 )
 
-st.set_page_config(page_title="More Practices!", layout="centered", initial_sidebar_state="auto")
+st.set_page_config(page_title="Bookmarks", page_icon="🔖", layout="centered", initial_sidebar_state="auto")
 
 # Fixed sidebar labels/order; keep deployed filenames and app.py unchanged.
 st.sidebar.page_link('app.py', label='Home')
 st.sidebar.page_link('pages/1_📖_Learn_Words.py', label='Learn Words', icon='📖')
 st.sidebar.page_link('pages/2_🎯_Dictation_Quiz.py', label='Dictation Quiz', icon='🎯')
-st.sidebar.page_link('pages/5_More_Practices.py', label='More Practices')
+st.sidebar.page_link('pages/5_More_Practices.py', label='Bookmarks', icon='🔖')
 st.sidebar.page_link('pages/4_🌱_Word Garden.py', label='Word Garden', icon='🌱')
 st.sidebar.page_link('pages/3_📊_Parent_Summary.py', label='Parent Summary', icon='📊')
 st.sidebar.divider()
@@ -53,7 +53,7 @@ with st.sidebar:
 
 child = st.session_state.active_child
 st.markdown(
-    '<div class="hero"><h1>More Practices!</h1><p>Saved items for '
+    '<div class="hero"><h1>🔖 Bookmarks</h1><p>Saved items for '
     '<span class="child-name">' + escape(str(child)) + '</span></p></div>',
     unsafe_allow_html=True,
 )
@@ -71,7 +71,7 @@ if error:
     st.warning(error)
     st.stop()
 if not records:
-    st.info("No saved items yet. In Learn Words, tick Save this item to More Practices! on an item you want to revisit.")
+    st.info("No saved items yet. In Learn Words, tick Bookmark this item on an item you want to revisit.")
     if st.button("Choose an item in Learn Words", use_container_width=True):
         st.switch_page("pages/1_📖_Learn_Words.py")
     st.stop()
@@ -118,5 +118,5 @@ with st.container(key="learn_item_navigation"):
         st.button(
             "Clear", key="clear_saved_item", use_container_width=True,
             on_click=clear_saved_practice, args=(API_URL, child, record["id"]),
-            help="Remove only this saved item from More Practices. You can bookmark it again later.",
+            help="Remove only this saved item from Bookmarks. You can bookmark it again later.",
         )
