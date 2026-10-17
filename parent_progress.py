@@ -6,6 +6,8 @@ import hashlib
 import io
 import json
 import math
+import time
+from threading import Lock
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -15,6 +17,9 @@ import streamlit as st
 
 FEATURE = 'parent_history'
 VERSION = 1
+HISTORY_CACHE_SECONDS = 60
+PROFILE_CACHE_SECONDS = 300
+BACKEND_RECHECK_SECONDS = 120
 FIELDS = ('id', 'timestamp', 'child_name', 'week_title', 'score', 'total_words', 'mastered', 'unfamiliar')
 
 
@@ -115,14 +120,56 @@ def _get(api_url: str, params: dict) -> Any:
     return response.json()
 
 
-@st.cache_data(ttl=10, max_entries=128, show_spinner=False)
-def fetch_history(api_url: str) -> dict:
-    result = {'records': [], 'source_timezone': 'Asia/Singapore', 'delete_ready': False, 'error': None, 'notice': None}
+class _UncachedFailure(Exception):
+    """Only successful reads are cached; transient errors remain retryable."""
+    def __init__(self, value):
+        super().__init__('Parent data could not be loaded')
+        self.value = value
+
+
+@st.cache_resource(show_spinner=False)
+def _backend_modes():
+    # Capability state only: no history, cookies, or PINs are stored here.
+    return {'lock': Lock(), 'legacy_until': {}}
+
+
+def _known_legacy(api_url: str) -> bool:
+    state = _backend_modes()
+    with state['lock']:
+        until = state['legacy_until'].get(api_url, 0)
+        if until <= time.monotonic():
+            state['legacy_until'].pop(api_url, None)
+            return False
+        return True
+
+
+def _remember_legacy(api_url: str):
+    state = _backend_modes()
+    with state['lock']:
+        if len(state['legacy_until']) >= 128:
+            state['legacy_until'].pop(next(iter(state['legacy_until'])), None)
+        state['legacy_until'][api_url] = time.monotonic() + BACKEND_RECHECK_SECONDS
+
+
+def _legacy_time_notice(records):
+    for record in records:
+        try:
+            parsed = datetime.fromisoformat(record['timestamp'].replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                return 'Historical timestamps without a timezone are interpreted as Asia/Singapore.'
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _load_history(api_url: str) -> dict:
+    result = {'records': [], 'source_timezone': 'Asia/Singapore', 'delete_ready': False,
+              'error': None, 'notice': None, 'profiles': None, 'profile_error': None, 'time_notice': None}
     if not api_url:
         result['error'] = 'Google Sheets is not configured. Your saved history has not been deleted.'
         return result
     try:
-        data = _get(api_url, {'action': 'get_history_records'})
+        data = None if _known_legacy(api_url) else _get(api_url, {'action': 'get_history_records'})
         if isinstance(data, dict) and data.get('feature') == FEATURE and data.get('version') == VERSION:
             if data.get('status') != 'success':
                 result['error'] = str(data.get('message') or 'History could not be loaded. Please try again.')
@@ -133,29 +180,103 @@ def fetch_history(api_url: str) -> dict:
                 ZoneInfo(result['source_timezone'])
             except (ZoneInfoNotFoundError, ValueError):
                 result['source_timezone'] = 'UTC'
-                result['notice'] = 'The spreadsheet timezone is unsupported; UTC is used to interpret timestamps without timezone information.'
-            result['delete_ready'] = True
+                result['time_notice'] = 'The spreadsheet timezone is unsupported; UTC is used for timestamps without timezone information.'
+            configured = data.get('delete_configured', True)
+            if not isinstance(configured, bool):
+                raise ValueError('Invalid deletion configuration response')
+            result['delete_ready'] = configured
+            if not configured:
+                result['notice'] = 'History loaded. To enable deletion, configure PARENT_PIN in the existing Apps Script project to match the private Streamlit parent PIN.'
+            if 'profiles' in data:
+                names = data['profiles']
+                if isinstance(names, list) and all(isinstance(name, str) and name.strip() for name in names):
+                    result['profiles'] = list(dict.fromkeys(name.strip() for name in names))
+                    result['profile_error'] = data.get('profiles_error')
         else:
-            # Old backend remains viewable, but volatile legacy IDs never authorize deletion.
-            old = _get(api_url, {'action': 'get_history'})
-            result['records'] = _normalize(old, legacy=True)
-            result['notice'] = 'History is view-only until the updated Apps Script is deployed. Deletion is disabled. Legacy timestamps without a timezone are interpreted as Asia/Singapore.'
+            # Remember unsupported capability briefly; do not repeat the failed
+            # modern probe on every normal read. Explicit Refresh resets this.
+            _remember_legacy(api_url)
+            result['records'] = _normalize(_get(api_url, {'action': 'get_history'}), legacy=True)
+            result['notice'] = "History loaded in view-only mode. Update the existing Apps Script deployment to enable deletion, then click 'Refresh saved history'."
+            result['time_notice'] = _legacy_time_notice(result['records'])
     except (requests.RequestException, ValueError, TypeError, KeyError):
         result['error'] = 'Could not load saved quiz history. This is a connection/response error, not confirmation that any records were deleted.'
     return result
 
 
-@st.cache_data(ttl=10, max_entries=128, show_spinner=False)
-def fetch_profiles(api_url: str) -> tuple[list[str], str | None]:
+@st.cache_data(ttl=HISTORY_CACHE_SECONDS, max_entries=128, show_spinner=False)
+def _cached_history(api_url: str) -> dict:
+    result = _load_history(api_url)
+    if result['error']:
+        raise _UncachedFailure(result)
+    return result
+
+
+def fetch_history(api_url: str) -> dict:
+    try:
+        return _cached_history(api_url)
+    except _UncachedFailure as failure:
+        return failure.value
+
+
+def _clear_history(api_url=None):
+    if api_url is None:
+        _cached_history.clear()
+    else:
+        _cached_history.clear(api_url)
+    state = _backend_modes()
+    with state['lock']:
+        if api_url is None:
+            state['legacy_until'].clear()
+        else:
+            state['legacy_until'].pop(api_url, None)
+
+
+# Retain the old fetch_history.clear(...) API used by existing callers.
+fetch_history.clear = _clear_history
+
+
+@st.cache_data(ttl=PROFILE_CACHE_SECONDS, max_entries=128, show_spinner=False)
+def _cached_profiles(api_url: str) -> tuple[list[str], str | None]:
     if not api_url:
-        return [], 'Google Sheets is not configured.'
+        raise _UncachedFailure(([], 'Google Sheets is not configured.'))
     try:
         data = _get(api_url, {'action': 'get_profiles'})
         if isinstance(data, list) and all(isinstance(value, str) and value.strip() for value in data):
             return list(dict.fromkeys(value.strip() for value in data)), None
     except (requests.RequestException, ValueError, TypeError):
         pass
-    return [], 'Could not load learner profiles. Learner names from saved history are shown instead.'
+    raise _UncachedFailure(([], 'Could not load learner profiles. Learner names from saved history are shown instead.'))
+
+
+def fetch_profiles(api_url: str) -> tuple[list[str], str | None]:
+    try:
+        return _cached_profiles(api_url)
+    except _UncachedFailure as failure:
+        return failure.value
+
+
+fetch_profiles.clear = _cached_profiles.clear
+
+
+def clear_parent_cache(api_url=None):
+    fetch_history.clear(api_url)
+    if api_url is None:
+        fetch_profiles.clear()
+    else:
+        fetch_profiles.clear(api_url)
+
+
+def fetch_dashboard(api_url: str) -> dict:
+    """Use the combined backend response; old backends retain safe fallback."""
+    result = fetch_history(api_url)
+    if result['error']:
+        return result
+    if result['profiles'] is None:
+        profiles, error = fetch_profiles(api_url)
+        result['profiles'] = profiles
+        result['profile_error'] = error
+    return result
 
 
 def snapshot(records: list[dict]) -> str:
