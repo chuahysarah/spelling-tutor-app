@@ -21,7 +21,7 @@ st.set_page_config(
 st.sidebar.page_link('app.py', label='Home')
 st.sidebar.page_link('pages/1_📖_Learn_Words.py', label='Learn Words', icon='📖')
 st.sidebar.page_link('pages/2_🎯_Dictation_Quiz.py', label='Dictation Quiz', icon='🎯')
-st.sidebar.page_link('pages/5_More_Practices.py', label='More Practices')
+st.sidebar.page_link('pages/5_More_Practices.py', label='Bookmarks', icon='🔖')
 st.sidebar.page_link('pages/4_🌱_Word Garden.py', label='Word Garden', icon='🌱')
 st.sidebar.page_link('pages/3_📊_Parent_Summary.py', label='Parent Summary', icon='📊')
 st.sidebar.divider()
@@ -93,6 +93,114 @@ hr { border-color:#e6ddf7 !important; }
     .hero h1 { font-size:2rem !important; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
+
+/* Child-friendly native sidebar controls. Keep Streamlit's own click/keyboard behavior. */
+button[data-testid="stExpandSidebarButton"],
+button[aria-label="Expand sidebar"],
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
+button[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"] {
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:10px !important;
+    width:auto !important;
+    min-width:156px !important;
+    min-height:56px !important;
+    padding:10px 16px !important;
+    background:#173f91 !important;
+    color:#ffffff !important;
+    border:3px solid #ffc94a !important;
+    border-radius:16px !important;
+    box-shadow:0 3px 0 #12336f,0 5px 14px rgba(17,24,39,.20) !important;
+    opacity:1 !important;
+    visibility:visible !important;
+    cursor:pointer !important;
+    transition:background-color .15s ease,box-shadow .15s ease !important;
+}
+button[data-testid="stExpandSidebarButton"]::after,
+button[aria-label="Expand sidebar"]::after,
+[data-testid="stSidebarCollapsedControl"] button::after,
+[data-testid="collapsedControl"] button::after,
+button[data-testid="stSidebarCollapsedControl"]::after,
+button[data-testid="collapsedControl"]::after {
+    content:"Open menu" !important;
+    color:#ffffff !important;
+    font:800 17px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
+    white-space:nowrap !important;
+}
+button[data-testid="stExpandSidebarButton"] span,
+button[aria-label="Expand sidebar"] span,
+[data-testid="stSidebarCollapsedControl"] button span,
+[data-testid="collapsedControl"] button span {
+    color:#ffffff !important;
+    font-size:28px !important;
+    opacity:1 !important;
+}
+button[data-testid="stExpandSidebarButton"] svg,
+button[aria-label="Expand sidebar"] svg,
+[data-testid="stSidebarCollapsedControl"] button svg,
+[data-testid="collapsedControl"] button svg {
+    width:28px !important;
+    height:28px !important;
+    color:#ffffff !important;
+    opacity:1 !important;
+}
+button[data-testid="stExpandSidebarButton"]:hover,
+button[aria-label="Expand sidebar"]:hover {
+    background:#12336f !important;
+    box-shadow:0 3px 0 #0c2451,0 6px 18px rgba(17,24,39,.24) !important;
+}
+button[data-testid="stExpandSidebarButton"]:focus-visible,
+button[aria-label="Expand sidebar"]:focus-visible {
+    outline:3px solid #111827 !important;
+    outline-offset:3px !important;
+}
+[data-testid="stHeader"]:has(button[aria-label="Expand sidebar"]) {
+    min-height:72px !important;
+    overflow:visible !important;
+}
+/* Leave room below the visible menu control instead of covering page content. */
+[data-testid="stAppViewContainer"]:has(button[aria-label="Expand sidebar"]) [data-testid="stMainBlockContainer"] {
+    padding-top:5.25rem !important;
+}
+button[aria-label="Collapse sidebar"],
+[data-testid="stSidebarCollapseButton"] button {
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:6px !important;
+    min-width:106px !important;
+    min-height:48px !important;
+    padding:8px 12px !important;
+    background:#ffc94a !important;
+    color:#111827 !important;
+    border:2px solid #6b4e00 !important;
+    border-radius:14px !important;
+    opacity:1 !important;
+    cursor:pointer !important;
+}
+button[aria-label="Collapse sidebar"]::after,
+[data-testid="stSidebarCollapseButton"] button::after {
+    content:"Close" !important;
+    color:#111827 !important;
+    font:800 16px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
+}
+button[aria-label="Collapse sidebar"] span,
+[data-testid="stSidebarCollapseButton"] button span {
+    color:#111827 !important;
+    font-size:26px !important;
+    opacity:1 !important;
+}
+button[aria-label="Collapse sidebar"]:focus-visible {
+    outline:3px solid #173f91 !important;
+    outline-offset:3px !important;
+}
+@media (prefers-reduced-motion:reduce) {
+    button[aria-label="Expand sidebar"],
+    button[aria-label="Collapse sidebar"] { transition:none !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
