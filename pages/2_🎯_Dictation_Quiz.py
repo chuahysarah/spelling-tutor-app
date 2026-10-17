@@ -248,7 +248,7 @@ def sync_child_profiles(children: list[str]) -> None:
 def log_completed_quiz(child_name: str, week_title: str, score: int, total_words: int, mastered: set, unfamiliar: set):
     if API_URL:
         try:
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            now_str = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
             payload = {
                 "action": "log_quiz",
                 "timestamp": now_str,
