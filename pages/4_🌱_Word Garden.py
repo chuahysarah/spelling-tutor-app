@@ -3,6 +3,13 @@ from __future__ import annotations
 import html
 import requests
 import streamlit as st
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from shared_theme import apply_shared_theme
 
 st.set_page_config(
     page_title="Word Garden 🌱",
@@ -22,145 +29,42 @@ st.sidebar.divider()
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+apply_shared_theme()
+
+# Page-specific visual accents only; behavior and data flow remain unchanged.
 st.markdown("""
 <style>
+/* Garden keeps its nature theme, using the shared palette, typography and cards. */
 .garden-banner {
-    padding: 1.3rem 1.5rem;
-    margin: .5rem 0 1.2rem;
-    border: 2px solid #c7ead5;
-    border-radius: 22px;
-    background: linear-gradient(120deg, #e8f8df, #e5f4ff 55%, #fff1c9);
-    text-align: center;
+    padding:1.35rem 1.5rem; margin:.6rem 0 1.25rem;
+    border:2px solid #c6d7f2; border-radius:24px;
+    background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 45%,#d9eeff 100%);
+    text-align:center; box-shadow:0 8px 20px rgba(23,63,145,.09);
 }
-.garden-banner p { margin: .25rem 0 0; color: #40564a; }
+.garden-banner strong { color:#173f91; font:800 1.35rem/1.35 'Baloo 2','Trebuchet MS',sans-serif; }
+.garden-banner p { margin:.35rem 0 0; color:#1f2937 !important; }
 .garden-card {
-    padding: 1.2rem;
-    border: 2px solid #d8efdc;
-    border-radius: 22px;
-    background: linear-gradient(160deg, #f7fff0, #effaf6);
-    text-align: center;
+    padding:1.2rem; border:2px solid #c6d7f2; border-radius:22px;
+    background:linear-gradient(160deg,#fff,#edf5ff); text-align:center;
 }
 .garden-scene {
-    min-height: 230px;
-    padding: 1.2rem 1rem .75rem;
-    border: 3px solid #b8dfac;
-    border-radius: 26px;
-    background: linear-gradient(180deg, #dff3ff 0%, #eff9ff 45%, #d7efb4 46%, #b8dd8d 100%);
-    box-shadow: inset 0 -12px 0 rgba(101, 158, 73, .12);
-    text-align: center;
+    min-height:230px; padding:1.25rem 1rem .8rem;
+    border:3px solid #8bb8e8; border-radius:26px;
+    background:linear-gradient(180deg,#dff3ff 0%,#eff9ff 45%,#d7efb4 46%,#b8dd8d 100%);
+    box-shadow:inset 0 -12px 0 rgba(101,158,73,.12),0 8px 22px rgba(23,63,145,.09);
+    text-align:center;
 }
-.garden-sun { font-size: 2.6rem; }
-.garden-flowers { min-height: 100px; padding: .4rem 0; font-size: 2.6rem; line-height: 1.65; }
-.garden-ground { margin-top: .3rem; color: #46683d; font-weight: 700; }
-.small-note { color: #566477; font-size: .95rem; }
-
-/* Child-friendly native sidebar controls. Keep Streamlit's own click/keyboard behavior. */
-button[data-testid="stExpandSidebarButton"],
-button[aria-label="Expand sidebar"],
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="collapsedControl"] button,
-button[data-testid="stSidebarCollapsedControl"],
-button[data-testid="collapsedControl"] {
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    gap:10px !important;
-    width:auto !important;
-    min-width:156px !important;
-    min-height:56px !important;
-    padding:10px 16px !important;
-    background:#173f91 !important;
-    color:#ffffff !important;
-    border:3px solid #ffc94a !important;
-    border-radius:16px !important;
-    box-shadow:0 3px 0 #12336f,0 5px 14px rgba(17,24,39,.20) !important;
-    opacity:1 !important;
-    visibility:visible !important;
-    cursor:pointer !important;
-    transition:background-color .15s ease,box-shadow .15s ease !important;
+.garden-sun { font-size:2.6rem; animation:garden-bob 2.8s ease-in-out infinite; }
+.garden-flowers { min-height:100px; padding:.4rem 0; font-size:2.6rem; line-height:1.65; }
+.garden-ground { margin-top:.3rem; color:#294b24; font-weight:800; font-family:'Baloo 2','Trebuchet MS',sans-serif; font-size:1.1rem; }
+.small-note { color:#374151; font-size:.95rem; }
+@keyframes garden-bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-5px); } }
+@media(max-width:640px) {
+    .garden-banner { padding:1rem; border-radius:20px; }
+    .garden-scene { min-height:190px; padding:1rem .75rem .65rem; }
+    .garden-flowers { min-height:82px; font-size:2.25rem; }
 }
-button[data-testid="stExpandSidebarButton"]::after,
-button[aria-label="Expand sidebar"]::after,
-[data-testid="stSidebarCollapsedControl"] button::after,
-[data-testid="collapsedControl"] button::after,
-button[data-testid="stSidebarCollapsedControl"]::after,
-button[data-testid="collapsedControl"]::after {
-    content:"Open menu" !important;
-    color:#ffffff !important;
-    font:800 17px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
-    white-space:nowrap !important;
-}
-button[data-testid="stExpandSidebarButton"] span,
-button[aria-label="Expand sidebar"] span,
-[data-testid="stSidebarCollapsedControl"] button span,
-[data-testid="collapsedControl"] button span {
-    color:#ffffff !important;
-    font-size:28px !important;
-    opacity:1 !important;
-}
-button[data-testid="stExpandSidebarButton"] svg,
-button[aria-label="Expand sidebar"] svg,
-[data-testid="stSidebarCollapsedControl"] button svg,
-[data-testid="collapsedControl"] button svg {
-    width:28px !important;
-    height:28px !important;
-    color:#ffffff !important;
-    opacity:1 !important;
-}
-button[data-testid="stExpandSidebarButton"]:hover,
-button[aria-label="Expand sidebar"]:hover {
-    background:#12336f !important;
-    box-shadow:0 3px 0 #0c2451,0 6px 18px rgba(17,24,39,.24) !important;
-}
-button[data-testid="stExpandSidebarButton"]:focus-visible,
-button[aria-label="Expand sidebar"]:focus-visible {
-    outline:3px solid #111827 !important;
-    outline-offset:3px !important;
-}
-[data-testid="stHeader"]:has(button[aria-label="Expand sidebar"]) {
-    min-height:72px !important;
-    overflow:visible !important;
-}
-/* Leave room below the visible menu control instead of covering page content. */
-[data-testid="stAppViewContainer"]:has(button[aria-label="Expand sidebar"]) [data-testid="stMainBlockContainer"] {
-    padding-top:5.25rem !important;
-}
-button[aria-label="Collapse sidebar"],
-[data-testid="stSidebarCollapseButton"] button {
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    gap:6px !important;
-    min-width:106px !important;
-    min-height:48px !important;
-    padding:8px 12px !important;
-    background:#ffc94a !important;
-    color:#111827 !important;
-    border:2px solid #6b4e00 !important;
-    border-radius:14px !important;
-    opacity:1 !important;
-    cursor:pointer !important;
-}
-button[aria-label="Collapse sidebar"]::after,
-[data-testid="stSidebarCollapseButton"] button::after {
-    content:"Close" !important;
-    color:#111827 !important;
-    font:800 16px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
-}
-button[aria-label="Collapse sidebar"] span,
-[data-testid="stSidebarCollapseButton"] button span {
-    color:#111827 !important;
-    font-size:26px !important;
-    opacity:1 !important;
-}
-button[aria-label="Collapse sidebar"]:focus-visible {
-    outline:3px solid #173f91 !important;
-    outline-offset:3px !important;
-}
-@media (prefers-reduced-motion:reduce) {
-    button[aria-label="Expand sidebar"],
-    button[aria-label="Collapse sidebar"] { transition:none !important; }
-}
+@media(prefers-reduced-motion:reduce) { .garden-sun { animation:none !important; } }
 </style>
 """, unsafe_allow_html=True)
 
