@@ -1,4 +1,4 @@
-"""Persistent More Practices bookmarks. No API keys or session-only fallback storage."""
+"""Persistent Bookmarks bookmarks. No API keys or session-only fallback storage."""
 from __future__ import annotations
 
 import hashlib
@@ -11,7 +11,7 @@ import streamlit as st
 
 FEATURE = "more_practices"
 VERSION = 1
-NOT_READY = "More Practices is not ready yet. A grown-up needs to update the Apps Script deployment using the supplied Code.gs."
+NOT_READY = "Bookmarks is not ready yet. A grown-up needs to update the Apps Script deployment using the supplied Code.gs."
 
 
 def _request(api_url: str, method: str, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
@@ -86,10 +86,10 @@ def show_bookmark_feedback(child_name: str) -> None:
 def on_bookmark_toggle(api_url: str, child_name: str, list_title: str, word: str, widget_key: str, bookmark_id: str) -> None:
     if st.session_state.get(widget_key, False):
         error = change_bookmark(api_url, "add_bookmark", child_name=child_name, list_title=list_title, word=word)
-        _flash(child_name, error or "Saved to More Practices!", bool(error))
+        _flash(child_name, error or "Saved to Bookmarks", bool(error))
     else:
         error = change_bookmark(api_url, "clear_bookmark", child_name=child_name, id=bookmark_id)
-        _flash(child_name, error or "Cleared from More Practices. The original list is unchanged.", bool(error))
+        _flash(child_name, error or "Cleared from Bookmarks. The original list is unchanged.", bool(error))
 
 
 def clear_saved_practice(api_url: str, child_name: str, bookmark_id: str) -> None:
@@ -108,7 +108,7 @@ def render_bookmark_checkbox(api_url: str, child_name: str, list_title: str, wor
     key = bookmark_widget_key(child_name, list_title, word)
     st.session_state[key] = existing is not None
     st.checkbox(
-        "Save this item to More Practices!",
+        "Bookmark this item",
         key=key,
         disabled=bool(error),
         on_change=on_bookmark_toggle,
@@ -404,5 +404,113 @@ select:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-v
 [data-testid="stSidebar"] [data-testid="stButton"] button span { color:#ffffff !important; }
 [data-testid="stSidebar"] [data-testid="stButton"] button:disabled p,
 [data-testid="stSidebar"] [data-testid="stButton"] button:disabled span { color:#374151 !important; }
+
+/* Child-friendly native sidebar controls. Keep Streamlit's own click/keyboard behavior. */
+button[data-testid="stExpandSidebarButton"],
+button[aria-label="Expand sidebar"],
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
+button[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"] {
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:10px !important;
+    width:auto !important;
+    min-width:156px !important;
+    min-height:56px !important;
+    padding:10px 16px !important;
+    background:#173f91 !important;
+    color:#ffffff !important;
+    border:3px solid #ffc94a !important;
+    border-radius:16px !important;
+    box-shadow:0 3px 0 #12336f,0 5px 14px rgba(17,24,39,.20) !important;
+    opacity:1 !important;
+    visibility:visible !important;
+    cursor:pointer !important;
+    transition:background-color .15s ease,box-shadow .15s ease !important;
+}
+button[data-testid="stExpandSidebarButton"]::after,
+button[aria-label="Expand sidebar"]::after,
+[data-testid="stSidebarCollapsedControl"] button::after,
+[data-testid="collapsedControl"] button::after,
+button[data-testid="stSidebarCollapsedControl"]::after,
+button[data-testid="collapsedControl"]::after {
+    content:"Open menu" !important;
+    color:#ffffff !important;
+    font:800 17px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
+    white-space:nowrap !important;
+}
+button[data-testid="stExpandSidebarButton"] span,
+button[aria-label="Expand sidebar"] span,
+[data-testid="stSidebarCollapsedControl"] button span,
+[data-testid="collapsedControl"] button span {
+    color:#ffffff !important;
+    font-size:28px !important;
+    opacity:1 !important;
+}
+button[data-testid="stExpandSidebarButton"] svg,
+button[aria-label="Expand sidebar"] svg,
+[data-testid="stSidebarCollapsedControl"] button svg,
+[data-testid="collapsedControl"] button svg {
+    width:28px !important;
+    height:28px !important;
+    color:#ffffff !important;
+    opacity:1 !important;
+}
+button[data-testid="stExpandSidebarButton"]:hover,
+button[aria-label="Expand sidebar"]:hover {
+    background:#12336f !important;
+    box-shadow:0 3px 0 #0c2451,0 6px 18px rgba(17,24,39,.24) !important;
+}
+button[data-testid="stExpandSidebarButton"]:focus-visible,
+button[aria-label="Expand sidebar"]:focus-visible {
+    outline:3px solid #111827 !important;
+    outline-offset:3px !important;
+}
+[data-testid="stHeader"]:has(button[aria-label="Expand sidebar"]) {
+    min-height:72px !important;
+    overflow:visible !important;
+}
+/* Leave room below the visible menu control instead of covering page content. */
+[data-testid="stAppViewContainer"]:has(button[aria-label="Expand sidebar"]) [data-testid="stMainBlockContainer"] {
+    padding-top:5.25rem !important;
+}
+button[aria-label="Collapse sidebar"],
+[data-testid="stSidebarCollapseButton"] button {
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:6px !important;
+    min-width:106px !important;
+    min-height:48px !important;
+    padding:8px 12px !important;
+    background:#ffc94a !important;
+    color:#111827 !important;
+    border:2px solid #6b4e00 !important;
+    border-radius:14px !important;
+    opacity:1 !important;
+    cursor:pointer !important;
+}
+button[aria-label="Collapse sidebar"]::after,
+[data-testid="stSidebarCollapseButton"] button::after {
+    content:"Close" !important;
+    color:#111827 !important;
+    font:800 16px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
+}
+button[aria-label="Collapse sidebar"] span,
+[data-testid="stSidebarCollapseButton"] button span {
+    color:#111827 !important;
+    font-size:26px !important;
+    opacity:1 !important;
+}
+button[aria-label="Collapse sidebar"]:focus-visible {
+    outline:3px solid #173f91 !important;
+    outline-offset:3px !important;
+}
+@media (prefers-reduced-motion:reduce) {
+    button[aria-label="Expand sidebar"],
+    button[aria-label="Collapse sidebar"] { transition:none !important; }
+}
 </style>
 """
