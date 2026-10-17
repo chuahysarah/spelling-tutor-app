@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from practice_bookmarks import apply_practice_theme
 from parent_progress import (
-    child_records, delete_records, fetch_history, fetch_profiles, history_csv,
+    child_records, delete_records, fetch_history, fetch_profiles, fetch_dashboard, clear_parent_cache, history_csv,
     newest_first, recorded_datetime, session_metrics, snapshot, time_label, word_breakdown,
 )
 
@@ -100,19 +100,23 @@ with st.sidebar:
     st.caption('Parent history tools')
     st.button('Lock dashboard', key='progress_lock', on_click=lock_dashboard, use_container_width=True)
     if st.button('Refresh saved history', key='progress_refresh', use_container_width=True):
-        fetch_history.clear(); fetch_profiles.clear()
+        clear_parent_cache(API_URL)
         st.session_state.pop('history_delete_plan', None)
         st.rerun()
+    st.caption('History reads are cached for up to 60 seconds. Refresh bypasses the cache.')
 
-loaded = fetch_history(API_URL)
+with st.spinner('Loading saved quiz results…'):
+    loaded = fetch_dashboard(API_URL)
 if loaded['error']:
     st.error(loaded['error'])
     st.stop()
 if loaded['notice']:
     st.info(loaded['notice'])
+if loaded.get('time_notice'):
+    st.caption(loaded['time_notice'])
 records = loaded['records']
 source_zone = loaded['source_timezone']
-profiles, profile_error = fetch_profiles(API_URL)
+profiles, profile_error = loaded['profiles'], loaded['profile_error']
 if profile_error:
     st.warning(profile_error)
 children = list(dict.fromkeys(profiles + [record['child_name'] for record in records]))
@@ -282,7 +286,7 @@ with history_tab:
                     if st.button('Permanently delete these records', key='progress_confirm_delete', disabled=not acknowledged or typed != child,
                             use_container_width=True):
                         # Recheck uncached history. Never expand the deletion payload to include unseen new rows.
-                        fetch_history.clear()
+                        fetch_history.clear(API_URL)
                         fresh = fetch_history(API_URL)
                         fresh_map = {record['id']: record for record in fresh['records']}
                         unchanged = not fresh['error'] and fresh['delete_ready'] and all(record['id'] in fresh_map and snapshot([record]) == snapshot([fresh_map[record['id']]]) for record in plan['records'])
