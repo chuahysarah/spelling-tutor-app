@@ -1,310 +1,201 @@
+"""Saved-quiz history tools. No list/profile/bookmark writes or live session assumptions."""
 from __future__ import annotations
 
+import csv
+import hashlib
+import io
 import json
+import math
+from datetime import datetime
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 import requests
 import streamlit as st
 
-st.set_page_config(
-    page_title="Parent Dashboard 📊",
-    page_icon="📊",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
-
-# Fixed sidebar labels/order; keep deployed filenames and app.py unchanged.
-st.sidebar.page_link('app.py', label='Home')
-st.sidebar.page_link('pages/1_📖_Learn_Words.py', label='Learn Words', icon='📖')
-st.sidebar.page_link('pages/2_🎯_Dictation_Quiz.py', label='Dictation Quiz', icon='🎯')
-st.sidebar.page_link('pages/5_More_Practices.py', label='Bookmarks', icon='🔖')
-st.sidebar.page_link('pages/4_🌱_Word Garden.py', label='Word Garden', icon='🌱')
-st.sidebar.page_link('pages/3_📊_Parent_Summary.py', label='Parent Summary', icon='📊')
-st.sidebar.divider()
-
-API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
-
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
-:root { --ink:#26324b; --blue:#2864dc; --purple:#7652d6; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0; --sky:#e7f5ff; }
-html, body, [class*="css"], button, input, select, textarea {
-    font-family:'Fredoka',sans-serif !important; color:var(--ink);
-}
-html, body, [data-testid="stAppViewContainer"] { background:#fffaf0 !important; }
-[data-testid="stHeader"] { background:rgba(255,250,240,.88) !important; }
-[data-testid="stMainBlockContainer"] { max-width:1100px; padding-top:2rem; }
-h1 { color:#3158b8 !important; font-weight:700 !important; letter-spacing:-.035em; }
-h2 { color:#6746bd !important; font-weight:700 !important; }
-h3 { color:#168d7c !important; font-weight:700 !important; }
-.stButton > button {
-    min-height:3.2rem; border:0 !important; border-radius:18px !important;
-    background:linear-gradient(115deg,#ff795e 0%,#ff9f54 100%) !important;
-    color:#fff !important; font-size:1.16rem !important; font-weight:700 !important;
-    padding:.65rem 1.25rem !important; box-shadow:0 5px 0 #df624b,0 9px 18px rgba(223,98,75,.16) !important;
-    transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
-}
-.stButton > button:hover { transform:translateY(-2px); filter:saturate(1.12); box-shadow:0 7px 0 #df624b,0 12px 22px rgba(223,98,75,.2) !important; }
-.stButton > button:active { transform:translateY(2px); box-shadow:0 2px 0 #df624b !important; }
-.stButton > button:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid #3158b8 !important; outline-offset:3px; }
-[data-testid="stSidebar"] {
-    background:linear-gradient(165deg,#e6f4ff 0%,#f0eaff 55%,#fff0e8 100%) !important;
-    border-right:3px solid #d6e5ff !important;
-}
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#34415c; }
-[data-testid="stSidebarCollapseButton"] button {
-    background:linear-gradient(135deg,#ffd34f,#ffad52) !important; color:#26324b !important;
-    border:2px solid #efa83a !important; border-radius:12px !important;
-}
-[data-testid="stSidebar"] .stSelectbox > div > div {
-    background:#fff !important; border:2px solid #b8d9ff !important; border-radius:16px !important;
-}
-[data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stSelectbox"] > div > div {
-    border-radius:14px !important; border-color:#bdd8fa !important; background:#fff !important;
-}
-[data-testid="stExpander"] {
-    background:rgba(255,255,255,.88); border:2px solid #e5dcfb !important; border-radius:18px !important;
-}
-[data-testid="stAlert"] { border-radius:16px !important; }
-hr { border-color:#e6ddf7 !important; }
-.hero {
-    position:relative; overflow:hidden; padding:2.4rem 1.8rem; border-radius:30px;
-    background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 48%,#d9eeff 100%);
-    border:3px solid #fff; text-align:center; margin:0 0 1.7rem;
-    box-shadow:0 12px 30px rgba(62,83,132,.12),inset 0 0 0 2px rgba(255,198,76,.6);
-}
-.hero h1 { color:#3158b8 !important; margin-bottom:.55rem; font-size:2.5rem !important; }
-.hero p { color:#39445d; font-size:1.2rem; margin:0; }
-.action-card {
-    padding:1.45rem 1.2rem; min-height:155px; border-radius:24px;
-    border:2px solid #fff; text-align:center;
-    background:linear-gradient(145deg,#fff 0%,#eff8ff 100%);
-    box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff;
-}
-.action-card h3 { font-size:1.65rem; color:#3158b8; margin-bottom:.4rem; }
-.action-card p { font-size:1.05rem; color:#4b5872; }
-@media (max-width:640px) {
-    [data-testid="stMainBlockContainer"] { padding:1.1rem 1rem 2rem; }
-    .hero { padding:1.6rem 1rem; border-radius:22px; }
-    .hero h1 { font-size:2rem !important; }
-}
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
-
-/* Child-friendly native sidebar controls. Keep Streamlit's own click/keyboard behavior. */
-button[data-testid="stExpandSidebarButton"],
-button[aria-label="Expand sidebar"],
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="collapsedControl"] button,
-button[data-testid="stSidebarCollapsedControl"],
-button[data-testid="collapsedControl"] {
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    gap:10px !important;
-    width:auto !important;
-    min-width:156px !important;
-    min-height:56px !important;
-    padding:10px 16px !important;
-    background:#173f91 !important;
-    color:#ffffff !important;
-    border:3px solid #ffc94a !important;
-    border-radius:16px !important;
-    box-shadow:0 3px 0 #12336f,0 5px 14px rgba(17,24,39,.20) !important;
-    opacity:1 !important;
-    visibility:visible !important;
-    cursor:pointer !important;
-    transition:background-color .15s ease,box-shadow .15s ease !important;
-}
-button[data-testid="stExpandSidebarButton"]::after,
-button[aria-label="Expand sidebar"]::after,
-[data-testid="stSidebarCollapsedControl"] button::after,
-[data-testid="collapsedControl"] button::after,
-button[data-testid="stSidebarCollapsedControl"]::after,
-button[data-testid="collapsedControl"]::after {
-    content:"Open menu" !important;
-    color:#ffffff !important;
-    font:800 17px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
-    white-space:nowrap !important;
-}
-button[data-testid="stExpandSidebarButton"] span,
-button[aria-label="Expand sidebar"] span,
-[data-testid="stSidebarCollapsedControl"] button span,
-[data-testid="collapsedControl"] button span {
-    color:#ffffff !important;
-    font-size:28px !important;
-    opacity:1 !important;
-}
-button[data-testid="stExpandSidebarButton"] svg,
-button[aria-label="Expand sidebar"] svg,
-[data-testid="stSidebarCollapsedControl"] button svg,
-[data-testid="collapsedControl"] button svg {
-    width:28px !important;
-    height:28px !important;
-    color:#ffffff !important;
-    opacity:1 !important;
-}
-button[data-testid="stExpandSidebarButton"]:hover,
-button[aria-label="Expand sidebar"]:hover {
-    background:#12336f !important;
-    box-shadow:0 3px 0 #0c2451,0 6px 18px rgba(17,24,39,.24) !important;
-}
-button[data-testid="stExpandSidebarButton"]:focus-visible,
-button[aria-label="Expand sidebar"]:focus-visible {
-    outline:3px solid #111827 !important;
-    outline-offset:3px !important;
-}
-[data-testid="stHeader"]:has(button[aria-label="Expand sidebar"]) {
-    min-height:72px !important;
-    overflow:visible !important;
-}
-/* Leave room below the visible menu control instead of covering page content. */
-[data-testid="stAppViewContainer"]:has(button[aria-label="Expand sidebar"]) [data-testid="stMainBlockContainer"] {
-    padding-top:5.25rem !important;
-}
-button[aria-label="Collapse sidebar"],
-[data-testid="stSidebarCollapseButton"] button {
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    gap:6px !important;
-    min-width:106px !important;
-    min-height:48px !important;
-    padding:8px 12px !important;
-    background:#ffc94a !important;
-    color:#111827 !important;
-    border:2px solid #6b4e00 !important;
-    border-radius:14px !important;
-    opacity:1 !important;
-    cursor:pointer !important;
-}
-button[aria-label="Collapse sidebar"]::after,
-[data-testid="stSidebarCollapseButton"] button::after {
-    content:"Close" !important;
-    color:#111827 !important;
-    font:800 16px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
-}
-button[aria-label="Collapse sidebar"] span,
-[data-testid="stSidebarCollapseButton"] button span {
-    color:#111827 !important;
-    font-size:26px !important;
-    opacity:1 !important;
-}
-button[aria-label="Collapse sidebar"]:focus-visible {
-    outline:3px solid #173f91 !important;
-    outline-offset:3px !important;
-}
-@media (prefers-reduced-motion:reduce) {
-    button[aria-label="Expand sidebar"],
-    button[aria-label="Collapse sidebar"] { transition:none !important; }
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("📊 Parent Summary & Practice History")
-
-PARENT_PIN = "6666"
-
-if "parent_dashboard_unlocked" not in st.session_state:
-    st.session_state.parent_dashboard_unlocked = False
-
-if not st.session_state.parent_dashboard_unlocked:
-    st.info("🔒 Enter PIN to view detailed learning history.")
-    entered_pin = st.text_input("Enter 4-digit Parent PIN:", type="password", key="dash_pin_entry")
-    if entered_pin == PARENT_PIN:
-        st.session_state.parent_dashboard_unlocked = True
-        st.rerun()
-    elif entered_pin != "":
-        st.error("❌ Incorrect PIN.")
-    st.stop()
+FEATURE = 'parent_history'
+VERSION = 1
+FIELDS = ('id', 'timestamp', 'child_name', 'week_title', 'score', 'total_words', 'mastered', 'unfamiliar')
 
 
-@st.cache_data(ttl=15, show_spinner=False)
-def fetch_practice_history() -> list[dict]:
-    if API_URL:
-        try:
-            resp = requests.get(f"{API_URL}?action=get_history", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list):
-                    return data
-        except Exception:
-            pass
-    return []
+def _timezone(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        return ZoneInfo('UTC')
 
 
-@st.cache_data(ttl=15, show_spinner=False)
-def fetch_child_profiles() -> list[str]:
-    if API_URL:
-        try:
-            resp = requests.get(API_URL, params={"action": "get_profiles"}, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and data:
-                    return data
-        except Exception:
-            pass
-    return ["Alex", "Emma"]
+def recorded_datetime(record: dict, source_timezone: str = 'Asia/Singapore') -> datetime | None:
+    value = record.get('timestamp')
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_timezone(source_timezone))
+    return parsed
 
 
-if "children" not in st.session_state:
-    st.session_state.children = fetch_child_profiles()
-if "active_child" not in st.session_state:
-    st.session_state.active_child = st.session_state.children[0]
+def time_label(record: dict, display_timezone: str, source_timezone: str = 'Asia/Singapore') -> str:
+    date = recorded_datetime(record, source_timezone)
+    if date is None:
+        return 'Recorded time unavailable'
+    local = date.astimezone(_timezone(display_timezone))
+    return local.strftime('%d %b %Y, %I:%M %p').replace(', 0', ', ')
 
-st.subheader("👤 Select Child Profile")
-view_child = st.selectbox(
-    "Showing active session details for:",
-    options=st.session_state.children,
-    index=st.session_state.children.index(st.session_state.active_child) if st.session_state.active_child in st.session_state.children else 0
-)
 
-st.divider()
+def newest_first(records: list[dict], source_timezone: str) -> list[dict]:
+    def key(record):
+        date = recorded_datetime(record, source_timezone)
+        return date.timestamp() if date else float('-inf')
+    return sorted(records, key=key, reverse=True)
 
-st.subheader(f"🌟 Session Overview for {view_child}")
-col1, col2 = st.columns(2)
 
-mastered = st.session_state.get(f"mastered_words_{view_child}", set())
-unfamiliar = st.session_state.get(f"unfamiliar_words_{view_child}", set())
+def _integer(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+        if not math.isfinite(number) or not number.is_integer() or number < 0:
+            return None
+        return int(number)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
-with col1:
-    st.metric(label="✅ Mastered Words (Session)", value=len(mastered))
-    if mastered:
-        st.write(", ".join(mastered))
-    else:
-        st.caption("No mastered words yet this session.")
 
-with col2:
-    st.metric(label="💡 Needs Practice (Session)", value=len(unfamiliar))
-    if unfamiliar:
-        st.write(", ".join(unfamiliar))
-    else:
-        st.caption("No practice flags currently.")
+def session_metrics(record: dict) -> dict:
+    score = _integer(record.get('score'))
+    total = _integer(record.get('total_words'))
+    if score is None or total is None or score > total:
+        return {'correct': None, 'needs_practice': None, 'total': total, 'accuracy': None, 'valid': False}
+    return {'correct': score, 'needs_practice': total - score, 'total': total,
+            'accuracy': 100 * score / total if total else None, 'valid': True}
 
-st.divider()
 
-st.subheader("📜 All Recorded History Logs")
+def word_breakdown(value: Any) -> list[str]:
+    if not isinstance(value, str) or value.strip().casefold() in {'', 'none', 'n/a'}:
+        return []
+    return [item.strip() for item in value.replace('，', ',').split(',') if item.strip()]
 
-history = fetch_practice_history()
 
-if history:
-    filtered_history = [
-        item for item in history 
-        if item.get('child_name', '').casefold() == view_child.casefold() or not item.get('child_name')
-    ]
-    
-    if filtered_history:
-        for attempt in reversed(filtered_history):
-            title = attempt.get('week_title', 'Spelling Practice')
-            time_str = attempt.get('timestamp', 'N/A')
-            score = attempt.get('score', 0)
-            total = attempt.get('total_words', 0)
-            with st.expander(f"🗓️ {time_str} — {title} (Score: {score}/{total})"):
-                st.write(f"🎯 **Score:** {score} / {total}")
-                st.write(f"✅ **Mastered Words:** {attempt.get('mastered', 'None')}")
-                st.write(f"💡 **Needs Practice Words:** {attempt.get('unfamiliar', 'None')}")
-    else:
-        st.info(f"No history records found for {view_child} yet.")
-else:
-    st.info("No past practice logs found in database.")
+def child_records(records: list[dict], child_name: str) -> list[dict]:
+    wanted = child_name.strip().casefold()
+    return [record for record in records if str(record.get('child_name', '')).strip().casefold() == wanted]
 
-if st.button("🔒 Lock Dashboard", type="secondary"):
-    st.session_state.parent_dashboard_unlocked = False
-    st.rerun()
+
+def _normalize(data: Any, legacy: bool = False) -> list[dict]:
+    if not isinstance(data, list):
+        raise ValueError('Invalid history response')
+    records = []
+    seen = set()
+    for index, raw in enumerate(data):
+        if not isinstance(raw, dict):
+            raise ValueError('Invalid history record')
+        record = {key: raw.get(key, '') for key in FIELDS}
+        record['child_name'] = str(record['child_name'] or 'Student').strip() or 'Student'
+        for key in ('timestamp', 'week_title', 'mastered', 'unfamiliar'):
+            record[key] = str(record[key] or '')
+        if legacy:
+            identity = json.dumps([index, raw], ensure_ascii=False, sort_keys=True, default=str)
+            record['id'] = 'legacy:' + hashlib.sha256(identity.encode('utf-8')).hexdigest()
+        if not isinstance(record['id'], str) or not record['id'] or record['id'] in seen:
+            raise ValueError('Missing or duplicate history ID')
+        seen.add(record['id'])
+        records.append(record)
+    return records
+
+
+def _get(api_url: str, params: dict) -> Any:
+    response = requests.get(api_url, params=params, allow_redirects=True, timeout=15)
+    if response.status_code != 200:
+        raise requests.RequestException('History service unavailable')
+    return response.json()
+
+
+@st.cache_data(ttl=10, max_entries=128, show_spinner=False)
+def fetch_history(api_url: str) -> dict:
+    result = {'records': [], 'source_timezone': 'Asia/Singapore', 'delete_ready': False, 'error': None, 'notice': None}
+    if not api_url:
+        result['error'] = 'Google Sheets is not configured. Your saved history has not been deleted.'
+        return result
+    try:
+        data = _get(api_url, {'action': 'get_history_records'})
+        if isinstance(data, dict) and data.get('feature') == FEATURE and data.get('version') == VERSION:
+            if data.get('status') != 'success':
+                result['error'] = str(data.get('message') or 'History could not be loaded. Please try again.')
+                return result
+            result['records'] = _normalize(data.get('history'))
+            result['source_timezone'] = str(data.get('timezone') or 'Asia/Singapore')
+            try:
+                ZoneInfo(result['source_timezone'])
+            except (ZoneInfoNotFoundError, ValueError):
+                result['source_timezone'] = 'UTC'
+                result['notice'] = 'The spreadsheet timezone is unsupported; UTC is used to interpret timestamps without timezone information.'
+            result['delete_ready'] = True
+        else:
+            # Old backend remains viewable, but volatile legacy IDs never authorize deletion.
+            old = _get(api_url, {'action': 'get_history'})
+            result['records'] = _normalize(old, legacy=True)
+            result['notice'] = 'History is view-only until the updated Apps Script is deployed. Deletion is disabled. Legacy timestamps without a timezone are interpreted as Asia/Singapore.'
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        result['error'] = 'Could not load saved quiz history. This is a connection/response error, not confirmation that any records were deleted.'
+    return result
+
+
+@st.cache_data(ttl=10, max_entries=128, show_spinner=False)
+def fetch_profiles(api_url: str) -> tuple[list[str], str | None]:
+    if not api_url:
+        return [], 'Google Sheets is not configured.'
+    try:
+        data = _get(api_url, {'action': 'get_profiles'})
+        if isinstance(data, list) and all(isinstance(value, str) and value.strip() for value in data):
+            return list(dict.fromkeys(value.strip() for value in data)), None
+    except (requests.RequestException, ValueError, TypeError):
+        pass
+    return [], 'Could not load learner profiles. Learner names from saved history are shown instead.'
+
+
+def snapshot(records: list[dict]) -> str:
+    return json.dumps([{key: record.get(key, '') for key in FIELDS} for record in records], ensure_ascii=False, sort_keys=True, default=str)
+
+
+def delete_records(api_url: str, child_name: str, ids: list[str], parent_pin: str, confirmed: bool = False) -> dict:
+    failure = {'error': 'History deletion could not be confirmed. Refresh history before trying again.', 'deleted_ids': [], 'missing_ids': []}
+    if not confirmed or not api_url or not parent_pin or not child_name.strip() or not ids or any(not isinstance(value, str) or not value or value.startswith('legacy:') for value in ids):
+        failure['error'] = 'A configured parent PIN, child, valid records, and explicit confirmation are required.'
+        return failure
+    requested = list(dict.fromkeys(ids))
+    try:
+        response = requests.post(api_url, json={'action': 'delete_history_records', 'child_name': child_name,
+            'ids': requested, 'parent_pin': parent_pin, 'confirm_delete': True}, allow_redirects=True, timeout=20)
+        data = response.json()
+        if response.status_code != 200 or not isinstance(data, dict) or data.get('feature') != FEATURE or data.get('version') != VERSION:
+            return failure
+        if data.get('status') != 'success':
+            failure['error'] = str(data.get('message') or failure['error'])
+            return failure
+        deleted, missing = data.get('deleted_ids'), data.get('missing_ids')
+        if not isinstance(deleted, list) or not isinstance(missing, list) or any(not isinstance(value, str) for value in deleted + missing):
+            return failure
+        if len(set(deleted + missing)) != len(deleted + missing) or set(deleted + missing) != set(requested):
+            return failure
+        fetch_history.clear()
+        return {'error': None, 'deleted_ids': deleted, 'missing_ids': missing}
+    except (requests.RequestException, ValueError, TypeError):
+        return failure
+
+
+def history_csv(records: list[dict], display_timezone: str, source_timezone: str) -> bytes:
+    output = io.StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(['Record ID', 'Child', 'Recorded time (' + display_timezone + ')', 'Original timestamp', 'Spelling list', 'Correct', 'Total', 'Correct words', 'Needs-practice words'])
+    def safe(value):
+        value = str(value)
+        return "'" + value if value.lstrip().startswith(('=', '+', '-', '@')) else value
+    for record in records:
+        writer.writerow([safe(value) for value in [record['id'], record['child_name'], time_label(record, display_timezone, source_timezone),
+            record['timestamp'], record['week_title'], record['score'], record['total_words'], record['mastered'], record['unfamiliar']]])
+    return ('\ufeff' + output.getvalue()).encode('utf-8')
