@@ -524,7 +524,7 @@ def rename_child_profile(old_name: str, new_name: str):
 
 
 with st.sidebar:
-    st.subheader("👤 Who is practicing today?")
+    st.subheader("👤 Who's the thinker today?")
     
     selected_child = st.selectbox(
         "Select Learner:",
@@ -562,8 +562,8 @@ safe_active_child = escape(str(active_child))
 
 st.markdown(f"""
 <div class="hero">
-    <h1>👋 Hi <span class="child-name">{safe_active_child}!</span> Welcome to Magic Spelling World! ✏️</h1>
-    <p>Listen, practice handwriting, and master Chinese & English spelling today!</p>
+    <h1>👋 Hello <span class="child-name">{safe_active_child}!</span> Welcome to Magic Spelling World! ✏️</h1>
+    <p>Listen, practise handwriting, and master Chinese & English spelling today!</p>
 </div>
 """, unsafe_allow_html=True)
 
