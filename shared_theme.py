@@ -65,11 +65,10 @@ def apply_shared_theme() -> None:
             box-shadow:0 4px 0 var(--blue-dark),0 8px 16px rgba(49,88,184,.15) !important;
             transition:transform .15s ease,box-shadow .15s ease,background-color .15s ease;
         }
-        /* Streamlit nests button labels in inner div/span/p nodes; set text color there too. */
+        /* Keep nested button labels white without overriding Streamlit's icon font. */
         .stButton > button *, [data-testid="stFormSubmitButton"] button *,
         button[data-testid^="stBaseButton-"] * {
-            color:#fff !important; font-family:'Nunito','Trebuchet MS',Arial,sans-serif !important;
-            text-align:center !important;
+            color:#fff !important; text-align:center !important;
         }
         .stButton > button > div, [data-testid="stFormSubmitButton"] button > div,
         button[data-testid^="stBaseButton-"] > div {
