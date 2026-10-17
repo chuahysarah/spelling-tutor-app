@@ -6,6 +6,13 @@ import json
 import re
 import requests
 import streamlit as st
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from shared_theme import apply_shared_theme
 import streamlit.components.v1 as components
 from gtts import gTTS
 from streamlit_drawable_canvas import st_canvas
@@ -28,178 +35,23 @@ st.sidebar.divider()
 
 API_URL = st.secrets.get("GSHEETS_API_URL", "").strip()
 
+apply_shared_theme()
+
+# Page-specific visual accents only; behavior and data flow remain unchanged.
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
-:root { --ink:#26324b; --blue:#2864dc; --purple:#7652d6; --coral:#ff765e; --sun:#ffc94a; --mint:#36bca0; --sky:#e7f5ff; }
-html, body, [class*="css"], button, input, select, textarea {
-    font-family:'Fredoka',sans-serif !important; color:var(--ink);
+/* Dictation keeps a focused blue/purple lesson surface within the shared theme. */
+[data-testid="stProgress"] { margin:.7rem 0 1rem; }
+[data-testid="stAlert"] { border:2px solid #c6d7f2; }
+[data-testid="stAudio"] { border-radius:16px; }
+[data-testid="stCanvas"] {
+    border:3px solid #a9c4e8 !important; border-radius:18px !important;
+    box-shadow:0 6px 18px rgba(23,63,145,.10);
 }
-html, body, [data-testid="stAppViewContainer"] { background:#fffaf0 !important; }
-[data-testid="stHeader"] { background:rgba(255,250,240,.88) !important; }
-[data-testid="stMainBlockContainer"] { max-width:1100px; padding-top:2rem; }
-h1 { color:#3158b8 !important; font-weight:700 !important; letter-spacing:-.035em; }
-h2 { color:#6746bd !important; font-weight:700 !important; }
-h3 { color:#168d7c !important; font-weight:700 !important; }
-.stButton > button {
-    min-height:3.2rem; border:0 !important; border-radius:18px !important;
-    background:linear-gradient(115deg,#ff795e 0%,#ff9f54 100%) !important;
-    color:#fff !important; font-size:1.16rem !important; font-weight:700 !important;
-    padding:.65rem 1.25rem !important; box-shadow:0 5px 0 #df624b,0 9px 18px rgba(223,98,75,.16) !important;
-    transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
-}
-.stButton > button:hover { transform:translateY(-2px); filter:saturate(1.12); box-shadow:0 7px 0 #df624b,0 12px 22px rgba(223,98,75,.2) !important; }
-.stButton > button:active { transform:translateY(2px); box-shadow:0 2px 0 #df624b !important; }
-.stButton > button:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid #3158b8 !important; outline-offset:3px; }
-[data-testid="stSidebar"] {
-    background:linear-gradient(165deg,#e6f4ff 0%,#f0eaff 55%,#fff0e8 100%) !important;
-    border-right:3px solid #d6e5ff !important;
-}
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#34415c; }
-[data-testid="stSidebarCollapseButton"] button {
-    background:linear-gradient(135deg,#ffd34f,#ffad52) !important; color:#26324b !important;
-    border:2px solid #efa83a !important; border-radius:12px !important;
-}
-[data-testid="stSidebar"] .stSelectbox > div > div {
-    background:#fff !important; border:2px solid #b8d9ff !important; border-radius:16px !important;
-}
-[data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stSelectbox"] > div > div {
-    border-radius:14px !important; border-color:#bdd8fa !important; background:#fff !important;
-}
-[data-testid="stExpander"] {
-    background:rgba(255,255,255,.88); border:2px solid #e5dcfb !important; border-radius:18px !important;
-}
-[data-testid="stAlert"] { border-radius:16px !important; }
-hr { border-color:#e6ddf7 !important; }
-.hero {
-    position:relative; overflow:hidden; padding:2.4rem 1.8rem; border-radius:30px;
-    background:linear-gradient(125deg,#fff0ae 0%,#ffdfd7 48%,#d9eeff 100%);
-    border:3px solid #fff; text-align:center; margin:0 0 1.7rem;
-    box-shadow:0 12px 30px rgba(62,83,132,.12),inset 0 0 0 2px rgba(255,198,76,.6);
-}
-.hero h1 { color:#3158b8 !important; margin-bottom:.55rem; font-size:2.5rem !important; }
-.hero p { color:#39445d; font-size:1.2rem; margin:0; }
-.action-card {
-    padding:1.45rem 1.2rem; min-height:155px; border-radius:24px;
-    border:2px solid #fff; text-align:center;
-    background:linear-gradient(145deg,#fff 0%,#eff8ff 100%);
-    box-shadow:0 8px 22px rgba(53,86,144,.11),inset 0 0 0 2px #cde5ff;
-}
-.action-card h3 { font-size:1.65rem; color:#3158b8; margin-bottom:.4rem; }
-.action-card p { font-size:1.05rem; color:#4b5872; }
-@media (max-width:640px) {
-    [data-testid="stMainBlockContainer"] { padding:1.1rem 1rem 2rem; }
-    .hero { padding:1.6rem 1rem; border-radius:22px; }
-    .hero h1 { font-size:2rem !important; }
-}
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; } }
-
-/* Child-friendly native sidebar controls. Keep Streamlit's own click/keyboard behavior. */
-button[data-testid="stExpandSidebarButton"],
-button[aria-label="Expand sidebar"],
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="collapsedControl"] button,
-button[data-testid="stSidebarCollapsedControl"],
-button[data-testid="collapsedControl"] {
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    gap:10px !important;
-    width:auto !important;
-    min-width:156px !important;
-    min-height:56px !important;
-    padding:10px 16px !important;
-    background:#173f91 !important;
-    color:#ffffff !important;
-    border:3px solid #ffc94a !important;
-    border-radius:16px !important;
-    box-shadow:0 3px 0 #12336f,0 5px 14px rgba(17,24,39,.20) !important;
-    opacity:1 !important;
-    visibility:visible !important;
-    cursor:pointer !important;
-    transition:background-color .15s ease,box-shadow .15s ease !important;
-}
-button[data-testid="stExpandSidebarButton"]::after,
-button[aria-label="Expand sidebar"]::after,
-[data-testid="stSidebarCollapsedControl"] button::after,
-[data-testid="collapsedControl"] button::after,
-button[data-testid="stSidebarCollapsedControl"]::after,
-button[data-testid="collapsedControl"]::after {
-    content:"Open menu" !important;
-    color:#ffffff !important;
-    font:800 17px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
-    white-space:nowrap !important;
-}
-button[data-testid="stExpandSidebarButton"] span,
-button[aria-label="Expand sidebar"] span,
-[data-testid="stSidebarCollapsedControl"] button span,
-[data-testid="collapsedControl"] button span {
-    color:#ffffff !important;
-    font-size:28px !important;
-    opacity:1 !important;
-}
-button[data-testid="stExpandSidebarButton"] svg,
-button[aria-label="Expand sidebar"] svg,
-[data-testid="stSidebarCollapsedControl"] button svg,
-[data-testid="collapsedControl"] button svg {
-    width:28px !important;
-    height:28px !important;
-    color:#ffffff !important;
-    opacity:1 !important;
-}
-button[data-testid="stExpandSidebarButton"]:hover,
-button[aria-label="Expand sidebar"]:hover {
-    background:#12336f !important;
-    box-shadow:0 3px 0 #0c2451,0 6px 18px rgba(17,24,39,.24) !important;
-}
-button[data-testid="stExpandSidebarButton"]:focus-visible,
-button[aria-label="Expand sidebar"]:focus-visible {
-    outline:3px solid #111827 !important;
-    outline-offset:3px !important;
-}
-[data-testid="stHeader"]:has(button[aria-label="Expand sidebar"]) {
-    min-height:72px !important;
-    overflow:visible !important;
-}
-/* Leave room below the visible menu control instead of covering page content. */
-[data-testid="stAppViewContainer"]:has(button[aria-label="Expand sidebar"]) [data-testid="stMainBlockContainer"] {
-    padding-top:5.25rem !important;
-}
-button[aria-label="Collapse sidebar"],
-[data-testid="stSidebarCollapseButton"] button {
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    gap:6px !important;
-    min-width:106px !important;
-    min-height:48px !important;
-    padding:8px 12px !important;
-    background:#ffc94a !important;
-    color:#111827 !important;
-    border:2px solid #6b4e00 !important;
-    border-radius:14px !important;
-    opacity:1 !important;
-    cursor:pointer !important;
-}
-button[aria-label="Collapse sidebar"]::after,
-[data-testid="stSidebarCollapseButton"] button::after {
-    content:"Close" !important;
-    color:#111827 !important;
-    font:800 16px/1.2 'Nunito','Trebuchet MS',Arial,sans-serif !important;
-}
-button[aria-label="Collapse sidebar"] span,
-[data-testid="stSidebarCollapseButton"] button span {
-    color:#111827 !important;
-    font-size:26px !important;
-    opacity:1 !important;
-}
-button[aria-label="Collapse sidebar"]:focus-visible {
-    outline:3px solid #173f91 !important;
-    outline-offset:3px !important;
-}
-@media (prefers-reduced-motion:reduce) {
-    button[aria-label="Expand sidebar"],
-    button[aria-label="Collapse sidebar"] { transition:none !important; }
+[data-testid="stTextInput"] input:disabled { color:#1f2937 !important; background:#f1f5f9 !important; }
+[data-testid="stHorizontalBlock"] [data-testid="stColumn"] { min-width:0; }
+@media(max-width:640px) {
+    [data-testid="stCanvas"] canvas { max-width:100% !important; height:auto !important; }
 }
 </style>
 """, unsafe_allow_html=True)
