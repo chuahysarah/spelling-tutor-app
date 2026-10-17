@@ -524,7 +524,7 @@ def rename_child_profile(old_name: str, new_name: str):
 
 
 with st.sidebar:
-    st.subheader("👤 Who's the thinker today?")
+    st.subheader("👤 Ready to learn?")
     
     selected_child = st.selectbox(
         "Select Learner:",
