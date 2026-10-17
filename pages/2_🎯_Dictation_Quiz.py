@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import io
 import json
+import hashlib
 import re
 import requests
 import streamlit as st
@@ -271,6 +272,13 @@ if f"unfamiliar_words_{active_child}" not in st.session_state:
 
 total_q = len(quiz_words)
 current_idx = st.session_state[f"quiz_index_{active_child}"]
+chinese_word_indices = [
+    idx for idx, word in enumerate(quiz_words)
+    if re.search(r'[\u4e00-\u9fff]', word)
+]
+pad_fingerprint = hashlib.sha256(
+    (active_child + "\0" + selected_list_title + "\0" + "\0".join(quiz_words)).encode("utf-8")
+).hexdigest()[:12]
 
 if current_idx >= total_q:
     st.balloons()
@@ -313,31 +321,34 @@ with audio_col1:
 
 st.write("---")
 
+if chinese_word_indices:
+    st.markdown(f"### ✏️ Chinese Writing Pads — {len(chinese_word_indices)} boxes")
+    st.caption("Write each Chinese answer in the numbered box that matches its question. English questions use the typed-answer field only.")
+    pad_columns = st.columns(2, gap="medium")
+    for pad_order, word_idx in enumerate(chinese_word_indices):
+        pad_widget_key = f"writing_pad_{pad_fingerprint}_{word_idx}"
+        with pad_columns[pad_order % 2]:
+            with st.container(border=True):
+                current_label = " — CURRENT QUESTION" if word_idx == current_idx else ""
+                st.markdown(f"**Question {word_idx + 1} of {total_q}{current_label}**")
+                st_canvas(
+                    fill_color="rgba(255, 255, 255, 0)",
+                    stroke_width=7,
+                    stroke_color="#000000",
+                    background_color="#ffffff",
+                    height=220,
+                    width=220,
+                    drawing_mode="freedraw",
+                    update_streamlit=False,
+                    key=pad_widget_key,
+                )
+
+    st.write("---")
+
 if is_chinese:
     if st.session_state[f"quiz_checked_{active_child}"]:
-        col_pad, col_ref = st.columns([1, 1], gap="medium")
-    else:
-        col_pad, col_ref = st.columns([1, 0.01])
-
-    with col_pad:
-        st.markdown("### ✏️ Your Chinese Writing Pad")
-        canvas_result = st_canvas(
-            fill_color="rgba(255, 255, 255, 0)",
-            stroke_width=7,
-            stroke_color="#000000",
-            background_color="#ffffff",
-            height=280,
-            width=280,
-            drawing_mode="freedraw",
-            update_streamlit=False,
-            return_image_data=True,
-            key=f"canvas_{active_child}_{selected_list_title}_{current_idx}"
-        )
-
-    with col_ref:
-        if st.session_state[f"quiz_checked_{active_child}"]:
-            st.markdown(f"### 🔍 Correct Word: **{target_word}**")
-            render_hanzi_animations(target_word)
+        st.markdown(f"### 🔍 Correct Word: **{target_word}**")
+        render_hanzi_animations(target_word)
 
     st.write("---")
 
